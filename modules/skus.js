@@ -29,7 +29,11 @@ function renderSkus() {
           </div>
         </td>
         <td style="text-align:right;">
-          <button class="btn btn-white btn-sm" onclick="_editSkuModal('${s.id}')">Editar Estoque</button>
+          <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+            <button class="btn btn-white btn-sm" onclick="_editSkuModal('${s.id}')">Editar Estoque</button>
+            <div style="width:1px; height:16px; background:var(--border);"></div>
+            <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="if(confirm('Excluir permanentemente o perfil ${s.code}?')) _deleteSku('${s.id}')">Remover</button>
+          </div>
         </td>
       </tr>
     `;
