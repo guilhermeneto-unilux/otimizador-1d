@@ -51,8 +51,8 @@ function renderSkus() {
       </button>
     </div>
 
-    <div class="table-card">
-      <table class="table">
+    <div class="tbl-wrap" style="margin-top:24px;">
+      <table class="tbl">
         <thead>
           <tr>
             <th>Código SKU</th>
