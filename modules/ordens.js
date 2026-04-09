@@ -129,9 +129,16 @@ function _criarLote() {
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
   const id = `LT-${String(appState.nextLoteId++).padStart(3,'0')}`;
   const skus = [...new Set(sel.map(oid => appState.ordens.find(o => o.id === oid)?.sku).filter(Boolean))];
-  DB.saveLote({ id, ordens: sel, skus, criacao: new Date().toISOString().split('T')[0], status: 'pending' });
-  sel.forEach(oid => { const o = appState.ordens.find(x => x.id === oid); if (o) o.status = 'in_batch'; });
-  DB.save();
+  const loteObj = { id, ordens: sel, skus, criacao: new Date().toISOString().split('T')[0], status: 'pending' };
+  appState.lotes.push(loteObj);
+  DB.saveLote(loteObj);
+  appState.ordens.forEach(o => { 
+    if(sel.includes(o.id)) { 
+      o.status = 'in_batch'; 
+      o.lote = id; 
+      DB.saveOrdem(o);
+    } 
+  });
   showToast(`Lote ${id} criado!`, 'success');
   navigate('otimizador');
 }

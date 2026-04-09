@@ -64,15 +64,15 @@ function _salvarSobra() {
   const sku   = document.getElementById('soSku').value;
   const med   = parseInt(document.getElementById('soMed').value);
   if (!med) { showToast('Informe a medida!', 'error'); return; }
-  const id = `SC-${String(appState.sobras.length + 1).padStart(3,'0')}`;
-  appState.sobras.push({ id, sku, medida: med, criacao: new Date().toISOString().split('T')[0], origem: 'Manual' });
-  DB.save();
+  const novaSobra = { id: `SC-${String(appState.sobras.length + 1).padStart(3,'0')}`, sku, medida: med, criacao: new Date().toISOString().split('T')[0], origem: 'Manual' };
+  appState.sobras.push(novaSobra);
+  DB.saveSobra(novaSobra);
   closeModal(); showToast('Sobra adicionada!', 'success');
   renderSobras(); updateBadges();
 }
 
 function _consumirSobra(id) {
   appState.sobras = appState.sobras.filter(s => s.id !== id);
-  DB.save(); showToast('Sobra consumida.', 'info');
+  DB.deleteSobra(id); showToast('Sobra consumida.', 'info');
   renderSobras(); updateBadges();
 }

@@ -100,12 +100,12 @@ function _saveEditSku(id) {
   if (s) {
     s.desc = document.getElementById('skEditDesc').value;
     s.dim  = parseInt(document.getElementById('skEditDim').value);
-    DB.save();
+    DB.saveSku(s);
   }
   closeModal(); showToast('SKU atualizado!', 'success'); renderSkus();
 }
 
 function _deleteSku(id) {
   appState.skus = appState.skus.filter(x => x.id !== id);
-  DB.save(); showToast('SKU removido.', 'info'); renderSkus();
+  DB.deleteSku(id); showToast('SKU removido.', 'info'); renderSkus();
 }

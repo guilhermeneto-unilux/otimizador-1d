@@ -222,33 +222,59 @@ function _finalizarOtimizacao() {
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
     lote.status = 'approved';
-    lote.ordens.forEach(id => { const o = appState.ordens.find(x => x.id === id); if (o) o.status = 'done'; });
+    DB.saveLote(lote);
+    lote.ordens.forEach(id => { const o = appState.ordens.find(x => x.id === id); if (o) { o.status = 'done'; DB.saveOrdem(o); } });
   }
 
   // Gerar novas sobras
+  let sobrasGeradas = 0;
   plans.forEach(p => {
     if (p.rem >= minSobra) {
-      const id = `SC-${String(appState.sobras.length + 1).padStart(3,'0')}`;
-      appState.sobras.push({ id, sku: p.sku, medida: p.rem, criacao: new Date().toISOString().split('T')[0], origem: loteId });
+      const id = `SC-${String(appState.nextSobraId++).padStart(3,'0')}`;
+      sobrasGeradas++;
+      const novaSobra = { id, sku: p.sku, medida: p.rem, criacao: new Date().toISOString().split('T')[0], origem: loteId };
+      appState.sobras.push(novaSobra);
+      DB.saveSobra(novaSobra);
     }
   });
 
   // Consumir sobras usadas
-  appState.sobras = appState.sobras.filter(s => !usedScraps.includes(s.id));
-
-  // Baixar barras virgens usadas
-  plans.filter(p => p.type === 'virgin' && p.srcId !== '???').forEach(p => {
-    const b = appState.barras.find(x => x.id === p.srcId);
-    if (b && b.qty > 0) b.qty--;
+  usedScraps.forEach(sid => {
+    appState.sobras = appState.sobras.filter(s => s.id !== sid);
+    DB.deleteSobra(sid);
   });
 
+  // Baixar barras virgens usadas
+  let barrasUsadas = 0;
+  plans.filter(p => p.type === 'virgin' && p.srcId !== '???').forEach(p => {
+    barrasUsadas++;
+    const b = appState.barras.find(x => x.id === p.srcId);
+    if (b && b.qty > 0) { b.qty--; DB.saveBarra(b); }
+  });
+
+  // Criar e salvar Histórico da Otimização
+  const totalLen = plans.reduce((s,p) => s + p.len, 0);
+  const totalWaste = plans.reduce((s,p) => s + p.rem, 0);
+  const aprov = totalLen > 0 ? ((1 - totalWaste/totalLen)*100).toFixed(2) : '0.00';
+  
+  const h = {
+    lote_id: loteId,
+    aproveitamento: aprov + '%',
+    barras_usadas: barrasUsadas,
+    sobras_geradas: sobrasGeradas,
+    desperdicio_total: totalWaste.toString(),
+    detalhes_plano: plans
+  };
+  
+  appState.historico.push(h);
+  DB.saveHistorico(h);
+
   window._lastOtimResult = null;
-  DB.save();
 
   const btn = document.getElementById('btnFinalizar');
   if (btn) { btn.disabled = true; btn.textContent = '✓ Aprovado'; }
 
-  showToast(`Plano ${loteId} finalizado com sucesso!`, 'success');
+  showToast(`Plano ${loteId} finalizado e Histórico salvo em Nuvem!`, 'success');
   updateBadges();
   setTimeout(() => navigate('planos'), 1200);
 }

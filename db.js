@@ -1,5 +1,5 @@
 /* ===================================================
-   STATE & DB LAYER (Supabase Cloud + LocalStorage Fallback)
+   STATE & DB LAYER (Supabase Relacional + Sync)
    =================================================== */
 
 const SUPABASE_URL = 'https://yqnntrsdbqwtlfgmcmqq.supabase.co';
@@ -7,6 +7,7 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
+// Memória local para fluidez instantânea da interface (Write-through cache)
 const appState = {
   currentRoute: 'dashboard',
   ordens: [], lotes: [], planos: [], barras: [], sobras: [], historico: [], skus: [],
@@ -14,78 +15,127 @@ const appState = {
 };
 
 const DB = {
-  STORAGE_KEY: 'UNILUX_1D_DATA',
-
   async init(initialData) {
     if (supabaseClient) {
-      console.log('☁️ Conectando ao Supabase...');
+      console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
-        const { data, error } = await supabaseClient.from('unilux_state').select('data').eq('id', 1).single();
-        if (error) {
-          console.warn('⚠️ Supabase table not found or empty (run the SQL query!). Fallback to mock/local...');
-          this._loadLocal(initialData);
-        } else if (data && data.data) {
-          Object.assign(appState, data.data);
-          console.log('✅ Dados carregados da NUVEM Unilux!');
-          this._updateStatusUI('Online');
+        // Fetch all tables in parallel to build the memory state
+        const [skusReq, barrasReq, sobrasReq, ordensReq, lotesReq, histReq] = await Promise.all([
+          supabaseClient.from('unilux_skus').select('*'),
+          supabaseClient.from('unilux_barras').select('*'),
+          supabaseClient.from('unilux_sobras').select('*'),
+          supabaseClient.from('unilux_ordens').select('*'),
+          supabaseClient.from('unilux_lotes').select('*'),
+          supabaseClient.from('unilux_historico').select('*')
+        ]);
+
+        if (skusReq.error || barrasReq.error) {
+          console.warn('⚠️ Tabelas não encontradas no Supabase! Certifique-se de ter rodado o script SQL.');
+          this._fallbackLocal(initialData);
+          return;
         }
+
+        appState.skus   = skusReq.data || [];
+        appState.barras = barrasReq.data || [];
+        appState.sobras = sobrasReq.data || [];
+        appState.ordens = ordensReq.data || [];
+        appState.lotes  = lotesReq.data || [];
+        appState.historico = histReq.data || [];
+
+        // Atualiza os geradores de ID baseado no tamanho dos dados
+        appState.nextLoteId = appState.lotes.length + 1;
+        appState.nextSobraId = appState.sobras.length + 1;
+
+        console.log('✅ Sistema sincronizado com a nuvem estruturada!');
+        this._updateStatusUI('Database Ativo');
+
       } catch (err) {
         console.error('Supabase error:', err);
-        this._loadLocal(initialData);
+        this._fallbackLocal(initialData);
       }
     } else {
-      this._loadLocal(initialData);
+      this._fallbackLocal(initialData);
     }
   },
 
-  _loadLocal(initialData) {
-    const saved = localStorage.getItem(this.STORAGE_KEY);
-    if (saved) {
-      try {
-        Object.assign(appState, JSON.parse(saved));
-        console.log('📦 Backup Local carregado.');
-        this._updateStatusUI('Local (Cache)');
-      } catch (e) {
-        Object.assign(appState, initialData);
-      }
-    } else {
-      Object.assign(appState, initialData);
-      this.saveLocalOnly();
-    }
+  _fallbackLocal(initialData) {
+    console.warn('Usando dados em memória (Fallback).');
+    Object.assign(appState, initialData);
+    this._updateStatusUI('Offline Fallback');
   },
 
   _updateStatusUI(statusTxt) {
     setTimeout(() => {
       const footer = document.querySelector('.sidebar-footer');
       if (footer) {
-        const cColor = statusTxt === 'Online' ? '#22c55e' : '#f59e0b';
+        const cColor = statusTxt.includes('Ativo') ? '#22c55e' : '#fca5a5';
         footer.innerHTML = `<span class="dot" style="background:${cColor}"></span>${statusTxt} · Supabase<br><span style="margin-left:12px;">MaxRects BSSF</span>`;
       }
     }, 500);
   },
 
-  async save() {
-    // 1. Snapshot local state
-    const snapshot = JSON.parse(JSON.stringify(appState));
-    
-    // 2. Save to localStorage instantly (optimistic UI)
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(snapshot));
+  /* 
+    SAVE METHODS 
+    Os métodos abaixo fazem "Fire and Forget": atualizam o cloud assincronamente.
+    A memória já foi modificada pela view para mostrar feedback imediato. 
+  */
 
-    // 3. Save to Supabase (async in background)
-    if (supabaseClient) {
-      const { error } = await supabaseClient.from('unilux_state').upsert({ id: 1, data: snapshot });
-      if (error) console.error('Erro ao salvar na nuvem:', error);
-    }
+  save() {
+    // Mantido apenas para compatibilidade legada em fluxos de deleção genérica
+    // Idealmente não deve mais ser usado; use os métodos específicos abaixo.
+    console.log('Alerta: DB.save() acionado (Legacy). As tabelas requerem saves atômicos.');
   },
 
-  saveLocalOnly() {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(appState));
+  async saveSku(s) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_skus').upsert(s);
+    if (error) console.error('Erro SKUs:', error);
   },
 
-  // Helper patterns
-  async saveOrdem(o) { appState.ordens.push(o); this.save(); },
-  async saveLote(l) { appState.lotes.push(l); this.save(); },
-  async saveSobra(s) { appState.sobras.push(s); this.save(); },
-  async savePlano(p) { appState.planos.push(p); this.save(); },
-  async saveSku(s) { appState.skus.push(s); this.save(); }
+  async saveOrdem(o) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_ordens').upsert(o);
+    if (error) console.error('Erro Ordens:', error);
+  },
+
+  async saveBarra(b) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_barras').upsert(b);
+    if (error) console.error('Erro Barras:', error);
+  },
+
+  async saveSobra(s) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_sobras').upsert(s);
+    if (error) console.error('Erro Sobras:', error);
+  },
+
+  async saveLote(l) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_lotes').upsert(l);
+    if (error) console.error('Erro Lote:', error);
+  },
+
+  async saveHistorico(h) {
+    if (!supabaseClient) return;
+    // Histórico não tem Upsert manual pelo ID pois tem Serial auto-increment no banco
+    const { error } = await supabaseClient.from('unilux_historico').insert(h);
+    if (error) console.error('Erro Histórico:', error);
+  },
+
+  // Delete methods
+  async deleteSku(id) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_skus').delete().eq('id', id);
+  },
+
+  async deleteBarra(id) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_barras').delete().eq('id', id);
+  },
+  
+  async deleteSobra(id) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_sobras').delete().eq('id', id);
+  }
 };

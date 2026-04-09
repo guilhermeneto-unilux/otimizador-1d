@@ -78,8 +78,9 @@ function _salvarBarra() {
   const skuObj = appState.skus.find(s => s.code === sku);
   const dim  = skuObj ? skuObj.dim : 6000;
   const id   = `B${String(appState.barras.length + 1).padStart(3,'0')}`;
-  appState.barras.push({ id, sku, lote, dim, qty, status: qty > 5 ? 'active' : 'low' });
-  DB.save();
+  const newBarra = { id, sku, lote, dim, qty, status: qty > 5 ? 'active' : 'low' };
+  appState.barras.push(newBarra);
+  DB.saveBarra(newBarra);
   closeModal();
   showToast('Lote de barras adicionado!', 'success');
   renderBarras();
@@ -101,11 +102,11 @@ function _editarBarra(id) {
 
 function _saveEditBarra(id) {
   const b = appState.barras.find(x => x.id === id);
-  if (b) { b.qty = parseInt(document.getElementById('brEditQty').value); DB.save(); }
+  if (b) { b.qty = parseInt(document.getElementById('brEditQty').value); DB.saveBarra(b); }
   closeModal(); showToast('Estoque atualizado!', 'success'); renderBarras();
 }
 
 function _deletarBarra(id) {
   appState.barras = appState.barras.filter(x => x.id !== id);
-  DB.save(); showToast('Lote removido.', 'info'); renderBarras();
+  DB.deleteBarra(id); showToast('Lote removido.', 'info'); renderBarras();
 }

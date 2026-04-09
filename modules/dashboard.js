@@ -134,11 +134,10 @@ function _seedTestData() {
   updateBadges();
 }
 
-function _clearAppData() {
-  appState.ordens = []; appState.lotes = []; appState.planos = [];
-  appState.sobras = []; appState.historico = [];
-  DB.save();
-  showToast('Dados limpos.', 'info');
-  renderDashboard();
-  updateBadges();
+function _limparDados() {
+  if(!confirm('Apagar TODOS os dados do sistema? (Isto apaga o cache local, limpe o Supabase manualmente!)')) return;
+  appState.ordens = []; appState.lotes = []; appState.planos = []; appState.barras = []; appState.sobras = []; appState.skus = [];
+  console.warn("Aviso: o cache local foi resetado. No Supabase, execute um TRUNCATE nas tabelas para reset limpo.");
+  showToast('Sistema resetado (Apenas local)', 'success');
+  renderDashboard(); updateBadges();
 }
