@@ -1,25 +1,11 @@
 /* ===================================================
-   STATE & DB LAYER (Centralizada para evitar erros de carga)
+   STATE & DB LAYER (Supabase Cloud + LocalStorage Fallback)
    =================================================== */
 
-const MOCK = {
-  skus: [
-    { id: 'S01', code: 'PER-40X40',  desc: 'Perfil Quadrado 40×40mm',  dim: 6000 },
-    { id: 'S02', code: 'PER-50X30',  desc: 'Perfil Retangular 50×30mm', dim: 6000 },
-    { id: 'S03', code: 'PER-20X20',  desc: 'Perfil Quadrado 20×20mm',  dim: 3000 },
-    { id: 'S04', code: 'TUBO-60X2',  desc: 'Tubo Redondo 60×2mm',      dim: 6000 },
-    { id: 'S05', code: 'CAN-25X25',  desc: 'Cantoneira 25×25mm',       dim: 6000 },
-  ],
-  barras: [
-    { id: 'B001', sku: 'PER-40X40', lote: 'LF-2024-03', dim: 6000, qty: 40, status: 'active' },
-    { id: 'B002', sku: 'PER-50X30', lote: 'LF-2024-03', dim: 6000, qty: 25, status: 'active' },
-  ],
-  ordens: [
-    { id: 'OP-001', sku: 'PER-40X40', dim: 1200, qty: 8,  entrega: '2026-04-15', cliente: 'Metalfab Ltda',     status: 'pending', lote: null },
-    { id: 'OP-002', sku: 'PER-50X30', dim: 850,  qty: 12, entrega: '2026-04-16', cliente: 'Estrutura Tech',    status: 'pending', lote: null },
-  ],
-  lotes: [], planos: [], sobras: [], historico: []
-};
+const SUPABASE_URL = 'https://yqnntrsdbqwtlfgmcmqq.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxbm50cnNkYnF3dGxmZ21jbXFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3Mzc5NTQsImV4cCI6MjA5MTMxMzk1NH0.Mh2t0MWxo490KPHQG9VS1wg8-Yp_rDLsydXfmpwLB14';
+
+const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const appState = {
   currentRoute: 'dashboard',
@@ -31,22 +17,68 @@ const DB = {
   STORAGE_KEY: 'UNILUX_1D_DATA',
 
   async init(initialData) {
+    if (supabase) {
+      console.log('☁️ Conectando ao Supabase...');
+      try {
+        const { data, error } = await supabase.from('unilux_state').select('data').eq('id', 1).single();
+        if (error) {
+          console.warn('⚠️ Supabase table not found or empty (run the SQL query!). Fallback to mock/local...');
+          this._loadLocal(initialData);
+        } else if (data && data.data) {
+          Object.assign(appState, data.data);
+          console.log('✅ Dados carregados da NUVEM Unilux!');
+          this._updateStatusUI('Online');
+        }
+      } catch (err) {
+        console.error('Supabase error:', err);
+        this._loadLocal(initialData);
+      }
+    } else {
+      this._loadLocal(initialData);
+    }
+  },
+
+  _loadLocal(initialData) {
     const saved = localStorage.getItem(this.STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        Object.assign(appState, parsed);
-        console.log('📦 Dados UNILUX carregados');
+        Object.assign(appState, JSON.parse(saved));
+        console.log('📦 Backup Local carregado.');
+        this._updateStatusUI('Local (Cache)');
       } catch (e) {
         Object.assign(appState, initialData);
       }
     } else {
       Object.assign(appState, initialData);
-      this.save();
+      this.saveLocalOnly();
     }
   },
 
-  save() {
+  _updateStatusUI(statusTxt) {
+    setTimeout(() => {
+      const footer = document.querySelector('.sidebar-footer');
+      if (footer) {
+        const cColor = statusTxt === 'Online' ? '#22c55e' : '#f59e0b';
+        footer.innerHTML = `<span class="dot" style="background:${cColor}"></span>${statusTxt} · Supabase<br><span style="margin-left:12px;">MaxRects BSSF</span>`;
+      }
+    }, 500);
+  },
+
+  async save() {
+    // 1. Snapshot local state
+    const snapshot = JSON.parse(JSON.stringify(appState));
+    
+    // 2. Save to localStorage instantly (optimistic UI)
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(snapshot));
+
+    // 3. Save to Supabase (async in background)
+    if (supabase) {
+      const { error } = await supabase.from('unilux_state').upsert({ id: 1, data: snapshot });
+      if (error) console.error('Erro ao salvar na nuvem:', error);
+    }
+  },
+
+  saveLocalOnly() {
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(appState));
   },
 
