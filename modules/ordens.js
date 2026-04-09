@@ -1,217 +1,137 @@
-/* ===== MODULE: ORDENS DE PRODUÇÃO ===== */
+/* ===== ORDENS DE PRODUÇÃO – UNILUX 1D ===== */
 
 function renderOrdens() {
-  const pendentes = appState.ordens.filter(o => o.status === 'pending');
-  const emLote    = appState.ordens.filter(o => o.status === 'batch');
+  const tab      = appState._ordensTab || 'pending';
+  const pending  = appState.ordens.filter(o => o.status === 'pending');
+  const inBatch  = appState.ordens.filter(o => o.status === 'in_batch' || o.status === 'done');
 
   document.getElementById('contentArea').innerHTML = `
-    <div class="page-header">
-      <div class="page-header-left">
-        <h1 class="page-title">Ordens de Produção</h1>
-        <p class="page-subtitle">Gerencie e envie ordens para otimização</p>
+    <div class="pg-header">
+      <div>
+        <div class="pg-eyebrow">${pending.length} pendente(s) · ${inBatch.length} em lote</div>
+        <h1 class="pg-title">Ordens de Produção</h1>
       </div>
-      <div class="page-actions">
-        <button class="btn btn-secondary btn-sm" onclick="_mockImportarOP()" title="Em breve">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Importar Excel
+      <div class="pg-actions">
+        <button class="btn btn-white btn-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+          Modelo
         </button>
-        <button class="btn btn-secondary btn-sm" onclick="_mockExportarOP()" title="Em breve">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Exportar Excel
+        <button class="btn btn-white btn-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          CSV
         </button>
-        <button class="btn btn-primary" onclick="_openNovaOP()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Nova Ordem
+        <button class="btn btn-white btn-sm" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/></svg>
+          Colar do Excel
         </button>
+        <button class="btn btn-white btn-sm" onclick="_novaOrdemModal()">+ Nova Ordem</button>
+        <button class="btn btn-green" onclick="_criarLote()">Criar Lote →</button>
       </div>
     </div>
 
-    <!-- TABS -->
-    <div class="tabs" id="ordTabs">
-      <button class="tab-btn active" data-tab="pendentes" onclick="_switchOrdTab('pendentes')">
-        Pendentes <span class="badge badge-warning" style="margin-left:6px">${pendentes.length}</span>
-      </button>
-      <button class="tab-btn" data-tab="emLote" onclick="_switchOrdTab('emLote')">
-        Em Lote <span class="badge badge-info" style="margin-left:6px">${emLote.length}</span>
-      </button>
+    <div class="tabs">
+      <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length})</span>
+      <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length})</span>
     </div>
 
-    <!-- TAB: PENDENTES -->
-    <div class="tab-panel active" id="tab-pendentes">
-      <div class="table-wrapper">
-        <div class="table-header">
-          <span class="table-title">Ordens aguardando otimização</span>
-          <div class="table-actions">
-            <button class="btn btn-primary btn-sm" id="btnCriarLote" onclick="_criarLote()" disabled>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
-              Criar Lote com Selecionadas
-            </button>
-          </div>
-        </div>
-        <div class="table-scroll">
-          <table id="tablePendentes">
-            <thead>
-              <tr>
-                <th class="checkbox-cell"><input type="checkbox" id="chkAllPend" onchange="_toggleAllPend(this)"></th>
-                <th>OP</th><th>SKU</th><th>Dimensão</th><th>Qtd</th>
-                <th>Entrega</th><th>Cliente</th><th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="tbodyPendentes">
-              ${pendentes.length === 0
-                ? `<tr><td colspan="8"><div class="table-empty">✅ Nenhuma ordem pendente</div></td></tr>`
-                : pendentes.map(o => `
-                  <tr id="row-${o.id}">
-                    <td class="checkbox-cell">
-                      <input type="checkbox" class="chk-pend" value="${o.id}" onchange="_updateCriarLoteBtn()">
-                    </td>
-                    <td><span class="font-700">${o.id}</span></td>
-                    <td>${_skuTag(o.sku)}</td>
-                    <td><span class="font-600">${o.dim} mm</span></td>
-                    <td>${o.qty} pç</td>
-                    <td>${formatDate(o.entrega)}</td>
-                    <td>${o.cliente}</td>
-                    <td><span class="status-pill status-pending">Pendente</span></td>
-                  </tr>
-                `).join('')
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: EM LOTE -->
-    <div class="tab-panel" id="tab-emLote">
-      <div class="table-wrapper">
-        <div class="table-header">
-          <span class="table-title">Ordens agrupadas em lotes</span>
-          <button class="btn btn-secondary btn-sm" onclick="navigate('otimizador')">
-            Ir para Otimizador →
-          </button>
-        </div>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>OP</th><th>Lote</th><th>SKU</th><th>Dimensão</th>
-                <th>Qtd</th><th>Entrega</th><th>Cliente</th><th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="tbodyEmLote">
-              ${emLote.length === 0
-                ? `<tr><td colspan="8"><div class="table-empty">Nenhuma ordem em lote</div></td></tr>`
-                : emLote.map(o => `
-                  <tr>
-                    <td><span class="font-700">${o.id}</span></td>
-                    <td>
-                      <span class="badge badge-info">${o.lote}</span>
-                    </td>
-                    <td>${_skuTag(o.sku)}</td>
-                    <td><span class="font-600">${o.dim} mm</span></td>
-                    <td>${o.qty} pç</td>
-                    <td>${formatDate(o.entrega)}</td>
-                    <td>${o.cliente}</td>
-                    <td><span class="status-pill status-batch">Em Lote</span></td>
-                  </tr>
-                `).join('')
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:36px;"><input type="checkbox" id="checkAll" onchange="_toggleAll(this)"></th>
+            <th>OP</th><th>SKU</th><th>Dimensão Corte</th><th>QTD</th><th>Entrega</th><th>Cliente</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_ordensRows(tab === 'pending' ? pending : inBatch)}
+        </tbody>
+      </table>
     </div>
   `;
 }
 
-function _switchOrdTab(tab) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+function _ordensRows(list) {
+  if (!list.length) return `<tr><td colspan="8" class="tbl-empty">Nenhuma ordem</td></tr>`;
+  return list.map(o => {
+    const c = skuColor(o.sku);
+    return `
+    <tr>
+      <td><input type="checkbox" class="ord-chk" data-id="${o.id}"></td>
+      <td class="fw-700" style="font-size:13px;">${o.id}</td>
+      <td><span class="sku-tag" style="background:${c.bg};color:${c.text};">${o.sku}</span></td>
+      <td class="fw-700">${o.dim} mm</td>
+      <td>${o.qty} pç</td>
+      <td style="color:var(--text-400);">${_fmtDate(o.entrega)}</td>
+      <td style="color:var(--text-400);">${o.cliente || '—'}</td>
+      <td><span class="status-badge ${o.status === 'pending' ? 'badge-pending' : o.status === 'in_batch' ? 'badge-batch' : 'badge-approved'}">
+        ${o.status === 'pending' ? 'Pendente' : o.status === 'in_batch' ? 'Em Lote' : 'Concluído'}
+      </span></td>
+    </tr>`;
+  }).join('');
 }
 
-function _toggleAllPend(master) {
-  document.querySelectorAll('.chk-pend').forEach(c => c.checked = master.checked);
-  _updateCriarLoteBtn();
+function _fmtDate(iso) {
+  if (!iso) return '—';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
 }
 
-function _updateCriarLoteBtn() {
-  const anyChecked = [...document.querySelectorAll('.chk-pend')].some(c => c.checked);
-  const btn = document.getElementById('btnCriarLote');
-  if (btn) btn.disabled = !anyChecked;
-}
+function _setOrdensTab(tab) { appState._ordensTab = tab; renderOrdens(); }
+function _toggleAll(el) { document.querySelectorAll('.ord-chk').forEach(c => c.checked = el.checked); }
 
-function _criarLote() {
-  const selected = [...document.querySelectorAll('.chk-pend:checked')].map(c => c.value);
-  if (!selected.length) return;
-
-  const loteId = `LT-${String(appState.nextLoteId++).padStart(3,'0')}`;
-  const skusInvolved = [...new Set(selected.map(id => appState.ordens.find(o=>o.id===id)?.sku).filter(Boolean))];
-
-  appState.lotes.push({
-    id: loteId, ordens: selected, status: 'pending',
-    criacao: new Date().toISOString().split('T')[0],
-    skus: skusInvolved,
-  });
-
-  selected.forEach(id => {
-    const o = appState.ordens.find(x => x.id === id);
-    if (o) { o.status = 'batch'; o.lote = loteId; }
-  });
-
-  showToast(`Lote ${loteId} criado com ${selected.length} ordem(ns)!`, 'success');
-  renderOrdens();
-  _switchOrdTab('emLote');
-}
-
-function _openNovaOP() {
-  const skuOptions = appState.skus.map(s => `<option value="${s.code}">${s.code} – ${s.desc}</option>`).join('');
+function _novaOrdemModal() {
+  const skuOpts = appState.skus.map(s => `<option value="${s.code}">${s.code} – ${s.desc}</option>`).join('');
   openModal('Nova Ordem de Produção', `
     <div class="form-group">
-      <label class="form-label">SKU *</label>
-      <select class="form-select" id="novaOpSku">${skuOptions}</select>
+      <label class="form-label">SKU / Material</label>
+      <select class="form-control" id="opSku">${skuOpts}</select>
     </div>
     <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Dimensão do Corte (mm) *</label>
-        <input class="form-input" type="number" id="novaOpDim" placeholder="ex: 1200" min="1">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Dimensão de Corte (mm)</label>
+        <input class="form-control" type="number" id="opDim" placeholder="ex: 1200">
       </div>
-      <div class="form-group">
-        <label class="form-label">Quantidade (peças) *</label>
-        <input class="form-input" type="number" id="novaOpQty" placeholder="ex: 10" min="1">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Quantidade (peças)</label>
+        <input class="form-control" type="number" id="opQty" value="1" min="1">
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Data de Entrega *</label>
-        <input class="form-input" type="date" id="novaOpEntrega">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Cliente</label>
-        <input class="form-input" type="text" id="novaOpCliente" placeholder="Nome do cliente">
-      </div>
+    <div class="form-group" style="margin-top:16px">
+      <label class="form-label">Cliente</label>
+      <input class="form-control" type="text" id="opCliente" placeholder="Nome do cliente">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Data de Entrega</label>
+      <input class="form-control" type="date" id="opEntrega">
     </div>
   `, `
-    <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-primary" onclick="_salvarNovaOP()">Criar Ordem</button>
+    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-dark" onclick="_salvarOrdem()">Salvar Ordem</button>
   `);
 }
 
-function _salvarNovaOP() {
-  const sku    = document.getElementById('novaOpSku').value;
-  const dim    = parseInt(document.getElementById('novaOpDim').value);
-  const qty    = parseInt(document.getElementById('novaOpQty').value);
-  const entrega = document.getElementById('novaOpEntrega').value;
-  const cliente = document.getElementById('novaOpCliente').value || 'Cliente';
-
-  if (!dim || !qty || !entrega) { showToast('Preencha todos os campos obrigatórios', 'error'); return; }
-
-  const newId = `OP-${String(appState.ordens.length + 1).padStart(3,'0')}`;
-  appState.ordens.push({ id: newId, sku, dim, qty, entrega, cliente, status: 'pending', lote: null });
-
+function _salvarOrdem() {
+  const sku     = document.getElementById('opSku').value;
+  const dim     = parseInt(document.getElementById('opDim').value);
+  const qty     = parseInt(document.getElementById('opQty').value);
+  const cliente = document.getElementById('opCliente').value || 'Geral';
+  const entrega = document.getElementById('opEntrega').value || new Date().toISOString().split('T')[0];
+  if (!dim || !qty) { showToast('Preencha dimensão e quantidade!', 'error'); return; }
+  const id = `OP-${String(appState.ordens.length + 1).padStart(3,'0')}`;
+  DB.saveOrdem({ id, sku, dim, qty, cliente, entrega, status: 'pending', lote: null });
   closeModal();
-  showToast(`Ordem ${newId} criada com sucesso!`, 'success');
-  renderOrdens();
+  showToast(`Ordem ${id} criada!`, 'success');
+  renderOrdens(); updateBadges();
 }
 
-function _mockImportarOP() { showToast('Importação via Excel – funcionalidade em breve!', 'info'); }
-function _mockExportarOP() { showToast('Exportação via Excel – funcionalidade em breve!', 'info'); }
+function _criarLote() {
+  const sel = [...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id);
+  if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
+  const id = `LT-${String(appState.nextLoteId++).padStart(3,'0')}`;
+  const skus = [...new Set(sel.map(oid => appState.ordens.find(o => o.id === oid)?.sku).filter(Boolean))];
+  DB.saveLote({ id, ordens: sel, skus, criacao: new Date().toISOString().split('T')[0], status: 'pending' });
+  sel.forEach(oid => { const o = appState.ordens.find(x => x.id === oid); if (o) o.status = 'in_batch'; });
+  DB.save();
+  showToast(`Lote ${id} criado!`, 'success');
+  navigate('otimizador');
+}

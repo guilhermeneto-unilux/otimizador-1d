@@ -1,240 +1,144 @@
-/* ===== MODULE: DASHBOARD ===== */
+/* ===== DASHBOARD – UNILUX 1D ===== */
 
 function renderDashboard() {
-  const ordens = appState.ordens;
-  const pendentes = ordens.filter(o => o.status === 'pending').length;
-  const emLote    = appState.lotes.filter(l => l.status === 'pending' || l.status === 'approved').length;
-  const barrasAtivas = appState.barras.reduce((s, b) => s + b.qty, 0);
-  const sobrasQty = appState.sobras.length;
+  const pending  = appState.ordens.filter(o => o.status === 'pending').length;
+  const inBatch  = appState.lotes.filter(l => l.status === 'pending').length;
+  const barTotal = appState.barras.reduce((s, b) => s + b.qty, 0);
+  const sobras   = appState.sobras.length;
 
-  const avgAprov = MOCK.kpiMensal.reduce((s, k) => s + k.aproveitamento, 0) / MOCK.kpiMensal.length;
+  const today = new Date().toLocaleDateString('pt-BR', {
+    weekday:'long', day:'2-digit', month:'long', year:'numeric'
+  });
 
   document.getElementById('contentArea').innerHTML = `
-    <div class="page-header">
-      <div class="page-header-left">
-        <h1 class="page-title">Dashboard</h1>
-        <p class="page-subtitle">Visão geral da operação – ${new Date().toLocaleDateString('pt-BR', {month:'long', year:'numeric'})}</p>
+    <div class="pg-header">
+      <div>
+        <div class="pg-eyebrow">${today}</div>
+        <h1 class="pg-title">Dashboard</h1>
+      </div>
+      <div class="pg-actions">
+        <button class="btn btn-white btn-sm" onclick="_seedTestData()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Criar Dados de Teste
+        </button>
+        <button class="btn btn-red btn-sm" onclick="_clearAppData()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          Limpar Dados de Teste
+        </button>
       </div>
     </div>
 
-    <!-- KPI CARDS -->
+    <!-- KPIs -->
     <div class="kpi-grid">
-      <div class="kpi-card kpi-accent">
-        <div class="kpi-icon ic-accent">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-            <rect x="9" y="3" width="6" height="4" rx="1"/>
-          </svg>
-        </div>
-        <span class="kpi-label">Ordens Pendentes</span>
-        <span class="kpi-value">${pendentes}</span>
-        <span class="kpi-delta up">↑ aguardando lote</span>
+      <div class="kpi-card kpi-orange">
+        <div class="kpi-num">${pending}</div>
+        <div class="kpi-label">Ordens Pendentes</div>
       </div>
       <div class="kpi-card kpi-blue">
-        <div class="kpi-icon ic-blue">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/>
-          </svg>
-        </div>
-        <span class="kpi-label">Lotes em Andamento</span>
-        <span class="kpi-value">${emLote}</span>
-        <span class="kpi-delta neu">→ planejados</span>
+        <div class="kpi-num">${inBatch}</div>
+        <div class="kpi-label">Planos Planejados</div>
       </div>
       <div class="kpi-card kpi-green">
-        <div class="kpi-icon ic-green">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="9" width="20" height="6" rx="2"/>
-          </svg>
-        </div>
-        <span class="kpi-label">Barras em Estoque</span>
-        <span class="kpi-value">${barrasAtivas}</span>
-        <span class="kpi-delta up">↑ unidades totais</span>
+        <div class="kpi-num">${barTotal}</div>
+        <div class="kpi-label">Barras em Estoque</div>
       </div>
-      <div class="kpi-card kpi-yellow">
-        <div class="kpi-icon ic-yellow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-          </svg>
-        </div>
-        <span class="kpi-label">Sobras Disponíveis</span>
-        <span class="kpi-value">${sobrasQty}</span>
-        <span class="kpi-delta neu">→ no grid</span>
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-num">${sobras}</div>
+        <div class="kpi-label">Sobras Disponíveis</div>
       </div>
     </div>
 
-    <!-- CHART + FLUXO -->
-    <div class="grid-2-1 mb-24">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title-lg">📈 Aproveitamento de Material</span>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <span style="font-size:12px;color:var(--text-muted);">Últimos 7 meses</span>
-            <span class="badge badge-success">${avgAprov.toFixed(1)}% médio</span>
+    <!-- Chart card -->
+    <div class="card" style="padding:24px; margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+        <div>
+          <div style="font-size:15px; font-weight:700; color:var(--text-900);">Aproveitamento por Mês</div>
+          <div style="font-size:12px; color:var(--text-400); margin-top:2px;">
+            Últimos 7 meses · Média: <strong style="color:var(--red)">0,0%</strong> · Total cortado: 0,0m · 0 plano(s)
           </div>
         </div>
-        <div class="chart-container">
-          <canvas id="aprovChart" height="200"></canvas>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="date" class="form-control" style="width:140px; padding:6px 10px; font-size:12px;">
+          <span style="font-size:12px; color:var(--text-400);">até</span>
+          <input type="date" class="form-control" style="width:140px; padding:6px 10px; font-size:12px;">
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title-lg">🔄 Fluxo Operacional</span>
-        </div>
-        <div class="flow-steps">
-          ${[
-            { icon:'📋', title:'1. Ordens',    desc:'Cadastre as ordens de produção' },
-            { icon:'📦', title:'2. Lote',      desc:'Agrupe ordens em um lote' },
-            { icon:'⚙️', title:'3. Otimize',  desc:'Execute o algoritmo de corte' },
-            { icon:'✅', title:'4. Aprove',    desc:'Confirme e gere o plano' },
-            { icon:'🏭', title:'5. Produza',   desc:'Inicie o corte physical' },
-          ].map((s, i, arr) => `
-            <div class="flow-step">
-              <div class="flow-step-content">
-                <div class="flow-step-icon" style="background:${['var(--accent-bg)','var(--blue-bg)','var(--purple-bg)','var(--green-bg)','var(--yellow-bg)'][i]}">
-                  ${s.icon}
-                </div>
-                <div class="flow-step-title">${s.title}</div>
-                <div class="flow-step-desc">${s.desc}</div>
-              </div>
-              ${i < arr.length-1 ? `<div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>` : ''}
-            </div>
-          `).join('')}
-        </div>
+      <div style="height:200px; display:flex; align-items:center; justify-content:center; background:#fafafa; border-radius:6px; border:1px dashed var(--border);">
+        <span style="color:var(--text-400); font-size:13px;">Sem dados de planos aprovados ainda.</span>
+      </div>
+
+      <div class="chart-legend">
+        <div class="legend-item"><span class="legend-dot" style="background:var(--green)"></span> ≥80% — Ótimo</div>
+        <div class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span> 65-79% — Regular</div>
+        <div class="legend-item"><span class="legend-dot" style="background:var(--red)"></span> &lt;65% — Baixo</div>
       </div>
     </div>
 
-    <!-- ÚLTIMOS LOTES -->
-    <div class="table-wrapper mb-24">
-      <div class="table-header">
-        <span class="table-title">📋 Últimos Lotes Otimizados</span>
-        <button class="btn btn-secondary btn-sm" onclick="navigate('planos')">Ver todos →</button>
+    <!-- Lower section -->
+    <div class="dashboard-lower">
+      <!-- Últimos Lotes -->
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-400);">Últimos Lotes</div>
+        ${appState.lotes.length === 0 ? `
+          <div class="tbl-empty">
+            <div style="margin-bottom:16px;">Nenhum lote ainda.</div>
+            <button class="btn btn-dark btn-sm" onclick="navigate('ordens')">Criar primeiro lote →</button>
+          </div>
+        ` : `
+          <table class="tbl">
+            <thead><tr><th>Lote</th><th>Data</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${appState.lotes.slice(-5).reverse().map(l => `
+                <tr>
+                  <td class="fw-700">${l.id}</td>
+                  <td style="color:var(--text-400)">${l.criacao || '—'}</td>
+                  <td><span class="status-badge ${l.status === 'approved' ? 'badge-approved' : 'badge-pending'}">${l.status === 'approved' ? 'Aprovado' : 'Aberto'}</span></td>
+                  <td><button class="btn btn-ghost btn-sm" onclick="navigate('planos')">Abrir →</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
       </div>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Lote</th><th>SKU</th><th>Barras Usadas</th><th>Sobras Geradas</th>
-              <th>Aproveitamento</th><th>Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${MOCK.ultimosLotes.map(l => `
-              <tr>
-                <td><span class="font-700">${l.id}</span></td>
-                <td>${_skuTag(l.sku)}</td>
-                <td>${l.barras}</td>
-                <td>${l.sobras}</td>
-                <td>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <div class="progress-bar" style="width:100px;">
-                      <div class="progress-fill" style="width:${l.aproveitamento}"></div>
-                    </div>
-                    <span class="font-600 text-green">${l.aproveitamento}</span>
-                  </div>
-                </td>
-                <td class="text-muted">${formatDate(l.data)}</td>
-              </tr>
+
+      <!-- Fluxo Operacional -->
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-400);">Fluxo Operacional</div>
+        <div style="padding:8px 20px;">
+          <ul class="flow-list">
+            ${[
+              ['Cadastrar SKUs e Barras',      'skus'],
+              ['Lançar Ordens de Produção',    'ordens'],
+              ['Criar lote e otimizar',        'otimizador'],
+              ['Aprovar planos',               'planos'],
+              ['Baixa de produção',            'planos'],
+            ].map(([txt, route], i) => `
+              <li class="flow-item">
+                <span class="flow-num">${i+1}</span>
+                <span class="flow-text">${txt}</span>
+                <button class="btn btn-ghost btn-sm flow-arr" onclick="navigate('${route}')">→</button>
+              </li>
             `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- ALERTAS RÁPIDOS -->
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header"><span class="card-title-lg">⚠️ Estoques Baixos</span></div>
-        ${appState.barras.filter(b => b.status === 'low').map(b => `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
-            <div>
-              <div class="font-600">${b.sku}</div>
-              <div style="font-size:12px;color:var(--text-muted);">Lote ${b.lote}</div>
-            </div>
-            <span class="status-pill status-low">${b.qty} barras</span>
-          </div>
-        `).join('')}
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title-lg">📅 Próximas Entregas</span></div>
-        ${appState.ordens.filter(o=>o.status==='pending').slice(0,4).sort((a,b)=>a.entrega.localeCompare(b.entrega)).map(o => `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
-            <div>
-              <div class="font-600">${o.id} – ${o.cliente}</div>
-              <div style="font-size:12px;color:var(--text-muted);">${o.qty}× ${o.dim}mm – ${o.sku}</div>
-            </div>
-            <span class="font-600" style="font-size:13px;color:var(--accent);">${formatDate(o.entrega)}</span>
-          </div>
-        `).join('')}
+          </ul>
+        </div>
       </div>
     </div>
   `;
-
-  _drawAprovChart();
 }
 
-function _skuTag(sku) {
-  const c = skuColor(sku);
-  return `<span style="background:${c.bg};color:${c.text};padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:700;">${sku}</span>`;
+function _seedTestData() {
+  DB.init(APP_MOCK);
+  showToast('Dados de teste criados!', 'success');
+  renderDashboard();
+  updateBadges();
 }
 
-function _drawAprovChart() {
-  const canvas = document.getElementById('aprovChart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const data = MOCK.kpiMensal;
-  const W = canvas.offsetWidth || 400;
-  const H = 200;
-  canvas.width = W; canvas.height = H;
-
-  const pad = { top: 20, right: 20, bottom: 36, left: 44 };
-  const chartW = W - pad.left - pad.right;
-  const chartH = H - pad.top - pad.bottom;
-  const barW = (chartW / data.length) * 0.55;
-  const barGap = chartW / data.length;
-
-  const minV = 80, maxV = 100;
-
-  ctx.clearRect(0, 0, W, H);
-
-  // Grid lines
-  for (let i = 0; i <= 4; i++) {
-    const v = minV + (maxV - minV) * (i / 4);
-    const y = pad.top + chartH - (v - minV) / (maxV - minV) * chartH;
-    ctx.strokeStyle = '#e5e9f2';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + chartW, y); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#9aa3b8';
-    ctx.font = '11px Inter, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(v.toFixed(0) + '%', pad.left - 6, y + 4);
-  }
-
-  // Bars
-  data.forEach((d, i) => {
-    const x = pad.left + i * barGap + (barGap - barW) / 2;
-    const barH = (d.aproveitamento - minV) / (maxV - minV) * chartH;
-    const y = pad.top + chartH - barH;
-
-    const grad = ctx.createLinearGradient(x, y, x, pad.top + chartH);
-    grad.addColorStop(0, '#818cf8');
-    grad.addColorStop(1, '#6366f1');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(x, y, barW, barH, [5, 5, 0, 0]);
-    ctx.fill();
-
-    // Value on top
-    ctx.fillStyle = '#0d1226';
-    ctx.font = '600 11px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(d.aproveitamento.toFixed(1) + '%', x + barW / 2, y - 6);
-
-    // Label
-    ctx.fillStyle = '#9aa3b8';
-    ctx.font = '11px Inter, sans-serif';
-    ctx.fillText(d.mes, x + barW / 2, pad.top + chartH + 18);
-  });
+function _clearAppData() {
+  appState.ordens = []; appState.lotes = []; appState.planos = [];
+  appState.sobras = []; appState.historico = [];
+  DB.save();
+  showToast('Dados limpos.', 'info');
+  renderDashboard();
+  updateBadges();
 }
