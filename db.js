@@ -5,7 +5,7 @@
 const SUPABASE_URL = 'https://yqnntrsdbqwtlfgmcmqq.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxbm50cnNkYnF3dGxmZ21jbXFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3Mzc5NTQsImV4cCI6MjA5MTMxMzk1NH0.Mh2t0MWxo490KPHQG9VS1wg8-Yp_rDLsydXfmpwLB14';
 
-const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const appState = {
   currentRoute: 'dashboard',
@@ -17,10 +17,10 @@ const DB = {
   STORAGE_KEY: 'UNILUX_1D_DATA',
 
   async init(initialData) {
-    if (supabase) {
+    if (supabaseClient) {
       console.log('☁️ Conectando ao Supabase...');
       try {
-        const { data, error } = await supabase.from('unilux_state').select('data').eq('id', 1).single();
+        const { data, error } = await supabaseClient.from('unilux_state').select('data').eq('id', 1).single();
         if (error) {
           console.warn('⚠️ Supabase table not found or empty (run the SQL query!). Fallback to mock/local...');
           this._loadLocal(initialData);
@@ -72,8 +72,8 @@ const DB = {
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(snapshot));
 
     // 3. Save to Supabase (async in background)
-    if (supabase) {
-      const { error } = await supabase.from('unilux_state').upsert({ id: 1, data: snapshot });
+    if (supabaseClient) {
+      const { error } = await supabaseClient.from('unilux_state').upsert({ id: 1, data: snapshot });
       if (error) console.error('Erro ao salvar na nuvem:', error);
     }
   },
