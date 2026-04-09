@@ -27,6 +27,7 @@ const APP_MOCK = {
   nextLoteId:  1,
   nextSobraId: 3,
   nextPlanoId: 1,
+  configs: { trim_mm: 0, scrap_penalty_pct: 0 }
 };
 
 // ─── SKU COLOR MAP ──────────────────────────────────────────────
@@ -72,6 +73,7 @@ function navigate(route) {
 }
 
 function updateBadges() {
+  if (!appState.ordens || !appState.sobras) return;
   const p = appState.ordens.filter(o => o.status === 'pending').length;
   const s = appState.sobras.length;
   const bO = document.getElementById('badge-ordens'); if (bO) bO.textContent = p;
