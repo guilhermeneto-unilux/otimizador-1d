@@ -15,6 +15,11 @@ const WMS_QUADS = [
 const WMS_ROWS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 let currentWmsQuad = null; // null = mostra o painel dos 9, senao mostra a matriz
 
+function _openWmsGrid(id) {
+  currentWmsQuad = id;
+  renderSobras();
+}
+
 function renderSobras() {
   const content = document.getElementById('contentArea');
   
