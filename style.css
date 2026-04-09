@@ -421,3 +421,23 @@ a { text-decoration: none; color: inherit; }
 .text-green { color: var(--green-dk); } .text-red { color: var(--red); } .text-muted { color: var(--text-400); }
 .fw-700 { font-weight: 700; } .fw-800 { font-weight: 800; }
 .mt-4 { margin-top: 16px; } .mb-4 { margin-bottom: 16px; }
+
+/* ================================================================
+   WMS (Batalha Naval)
+   ================================================================ */
+.wms-dashboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+.wms-card { padding: 20px; border-radius: var(--radius); cursor: pointer; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px; transition: transform .15s; }
+.wms-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / .1); }
+.wms-card-name { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+.wms-card-stats { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; opacity: 0.9; }
+.wms-bar { width: 100%; height: 6px; background: rgba(0,0,0,0.15); border-radius: 4px; overflow: hidden; }
+.wms-bar-fill { height: 100%; }
+
+.wms-matrix { display: grid; gap: 4px; background: #e5e7eb; border: 1px solid var(--border); padding: 8px; border-radius: 8px; min-width: 600px; }
+.wms-cell { background: var(--white); height: 48px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; cursor: pointer; transition: all .1s; border: 2px solid transparent; }
+.wms-cell.header { background: transparent; color: var(--text-500); font-size: 12px; cursor: default; border: none; }
+.wms-cell.empty { background: #f9fafb; border: 1px dashed var(--border-dark); }
+.wms-cell.empty:hover { background: #f3f4f6; border-color: var(--text-400); }
+.wms-cell.occupied { color: #fff; box-shadow: 0 2px 4px rgb(0 0 0 / 0.1); }
+.wms-cell.occupied:hover { transform: scale(1.05); z-index: 2; border-color: rgba(255,255,255,0.4) !important; }
+.sc-len { font-size: 13px; font-weight: 800; letter-spacing: -0.5px; }

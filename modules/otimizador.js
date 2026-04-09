@@ -255,13 +255,16 @@ function _finalizarOtimizacao() {
     lote.ordens.forEach(id => { const o = appState.ordens.find(x => x.id === id); if (o) { o.status = 'done'; DB.saveOrdem(o); } });
   }
 
-  // Gerar novas sobras
+  // Gerar novas sobras auto-endereçadas
   let sobrasGeradas = 0;
   plans.forEach(p => {
     if (p.rem >= minSobra) {
       const id = `SC-${String(appState.nextSobraId++).padStart(3,'0')}`;
       sobrasGeradas++;
-      const novaSobra = { id, sku: p.sku, medida: p.rem, criacao: new Date().toISOString().split('T')[0], origem: loteId };
+      
+      const enderecoGarantido = _findNextWmsSlot();
+      const novaSobra = { id, sku: p.sku, medida: p.rem, criacao: new Date().toISOString().split('T')[0], origem: loteId, endereco: enderecoGarantido };
+      
       appState.sobras.push(novaSobra);
       DB.saveSobra(novaSobra);
     }
@@ -315,4 +318,24 @@ function _finalizarOtimizacao() {
   showToast(`Plano ${loteId} finalizado e Histórico salvo em Nuvem!`, 'success');
   updateBadges();
   setTimeout(() => navigate('planos'), 1200);
+}
+
+function _findNextWmsSlot() {
+  const occupied = appState.sobras.map(s => s.endereco).filter(Boolean);
+  const CFG = [
+    { id: 'VERDE', rows: 11, cols: 11 }, { id: 'ROXO', rows: 11, cols: 11 }, { id: 'AZUL', rows: 11, cols: 11 },
+    { id: 'PRETO', rows: 11, cols: 11 }, { id: 'ROSA', rows: 6, cols: 6 },   { id: 'AMARELO', rows: 6, cols: 6 },
+    { id: 'VERMELHO', rows: 6, cols: 6 }, { id: 'CINZA', rows: 6, cols: 6 },  { id: 'BRANCO', rows: 9, cols: 9 }
+  ];
+  const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  
+  for(let q of CFG) {
+    for(let r=0; r<q.rows; r++) {
+      for(let c=1; c<=q.cols; c++) {
+        const adr = `${q.id}-${L[r]}${String(c).padStart(2,'0')}`;
+        if (!occupied.includes(adr)) return adr;
+      }
+    }
+  }
+  return null; // Caso a fabrica esteja com 709 retalhos (100% cheia)
 }
