@@ -83,17 +83,24 @@ function renderSobras() {
         
         // Verifica se tem sobra ali
         const s = appState.sobras.find(x => x.endereco === ender);
+        const cellLabel = `${rowChar}${colStr}`;
+        
         if (s) {
-          const skuInfo = appState.skus.find(sk => sk.code === s.sku) || { desc: '' };
           const cBg = skuColor(s.sku).bg;
           const cText = skuColor(s.sku).text;
           gridHtml += `
-            <div class="wms-cell occupied" style="background:${cBg}; color:${cText}; border-color:${cText}44;" onclick="_clickWmsSlot('${ender}', true)" title="SKU: ${s.sku}\nMedida: ${s.medida}mm\nCadastrado: ${s.criacao}">
+            <div class="wms-cell occupied" style="background:${cBg}; color:${cText}; border-color:${cText}44;" onclick="_clickWmsSlot('${ender}', true)" title="SKU: ${s.sku}\nMedida: ${s.medida}mm">
+              <div style="font-size:9px; opacity:0.7; position:absolute; top:2px; left:4px;">${cellLabel}</div>
               <div class="sc-len">${s.medida}</div>
+              <div style="font-size:8px; font-weight:700; opacity:0.9;">${s.sku}</div>
             </div>
           `;
         } else {
-          gridHtml += `<div class="wms-cell empty" onclick="_clickWmsSlot('${ender}', false)" title="Vazio: ${ender}"></div>`;
+          gridHtml += `
+            <div class="wms-cell empty" onclick="_clickWmsSlot('${ender}', false)" title="Vazio: ${ender}">
+              <span style="opacity:0.3; font-size:10px;">${cellLabel}</span>
+            </div>
+          `;
         }
       }
     }
