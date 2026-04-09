@@ -47,10 +47,16 @@ function renderSobras() {
           <div class="pg-eyebrow">Warehouse Management (WMS)</div>
           <h1 class="pg-title">Retalhos & Sobras</h1>
         </div>
-        <button class="btn btn-green" onclick="_openWmsSearch()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          Buscar Retalho
-        </button>
+        <div class="pg-actions">
+          <button class="btn btn-green" onclick="_openManualSobraModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Novo Retalho Manual
+          </button>
+          <button class="btn btn-white" onclick="_openWmsSearch()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            Buscar
+          </button>
+        </div>
       </div>
 
       <div class="wms-dashboard">
@@ -98,7 +104,8 @@ function renderSobras() {
         } else {
           gridHtml += `
             <div class="wms-cell empty" onclick="_clickWmsSlot('${ender}', false)" title="Vazio: ${ender}">
-              <span style="opacity:0.3; font-size:10px;">${cellLabel}</span>
+              <div style="font-size:14px; opacity:0.6; font-weight:400; margin-bottom:2px;">+</div>
+              <span style="opacity:0.3; font-size:9px;">${cellLabel}</span>
             </div>
           `;
         }
@@ -215,6 +222,11 @@ function _consumirSobra(id) {
   appState.sobras = appState.sobras.filter(s => s.id !== id);
   DB.deleteSobra(id); showToast('Retalho removido.', 'info');
   closeModal(); renderSobras(); updateBadges();
+}
+
+function _openManualSobraModal() {
+  const nextEnd = _findNextWmsSlot() || 'S/ Endereço';
+  _clickWmsSlot(nextEnd, false);
 }
 
 function _openWmsSearch() {
