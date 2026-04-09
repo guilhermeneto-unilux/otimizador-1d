@@ -124,20 +124,24 @@ function _calcOtimizacao() {
         return;
       }
 
-      // Barra virgem
-      const fullLen = getSkuDim(sku);
-      bins.push({ type:'virgin', srcId: _pickBar(sku), len:fullLen, sku, pcs:[pc], rem:fullLen - pc.dim });
+      // Barra virgem intelignte (menor tamanho que caiba, ou maior padrao se sem estoque)
+      let chosenDim = 6000;
+      const sObj = appState.skus.find(x => x.code === sku);
+      if (sObj && sObj.dims) {
+        const validos = sObj.dims.filter(d => d.qty > 0 && d.dim >= pc.dim).sort((a,b) => a.dim - b.dim);
+        if (validos.length > 0) chosenDim = validos[0].dim;
+        else {
+           const maiores = sObj.dims.filter(d => d.dim >= pc.dim).sort((a,b) => b.dim - a.dim);
+           if (maiores.length > 0) chosenDim = maiores[0].dim;
+        }
+      }
+      bins.push({ type:'virgin', srcId: `${sku}|${chosenDim}`, len:chosenDim, sku, pcs:[pc], rem:chosenDim - pc.dim });
     });
 
     bins.forEach(b => plans.push(b));
   });
 
   _renderResultados(plans, loteId, minSobra, usedScraps);
-}
-
-function _pickBar(sku) {
-  const b = appState.barras.find(x => x.sku === sku && x.qty > 0);
-  return b ? b.id : '???';
 }
 
 function _renderResultados(plans, loteId, minSobra, usedScraps) {
@@ -244,13 +248,22 @@ function _finalizarOtimizacao() {
     DB.deleteSobra(sid);
   });
 
-  // Baixar barras virgens usadas
+  // Baixar barras virgens usadas agrupadas pelo SKU (Multi-Length Support)
   let barrasUsadas = 0;
-  plans.filter(p => p.type === 'virgin' && p.srcId !== '???').forEach(p => {
+  const skusAffected = new Set();
+  plans.filter(p => p.type === 'virgin').forEach(p => {
     barrasUsadas++;
-    const b = appState.barras.find(x => x.id === p.srcId);
-    if (b && b.qty > 0) { b.qty--; DB.saveBarra(b); }
+    const [skCode, dStr] = p.srcId.split('|');
+    const dim = parseInt(dStr);
+    const skuObj = appState.skus.find(x => x.code === skCode);
+    if (skuObj && skuObj.dims) {
+      const dimEntry = skuObj.dims.find(d => d.dim === dim);
+      if (dimEntry && dimEntry.qty > 0) dimEntry.qty--;
+      skusAffected.add(skuObj);
+    }
   });
+  // Flush batch updates to cloud
+  skusAffected.forEach(s => DB.saveSku(s));
 
   // Criar e salvar Histórico da Otimização
   const totalLen = plans.reduce((s,p) => s + p.len, 0);

@@ -5,19 +5,13 @@
 // ─── MOCK DATA (seeded via "Criar Dados de Teste") ──────────────
 const APP_MOCK = {
   skus: [
-    { id:'S01', code:'PER-40X40', desc:'Perfil Quadrado 40×40mm',   dim:6000 },
-    { id:'S02', code:'PER-50X30', desc:'Perfil Retangular 50×30mm', dim:6000 },
-    { id:'S03', code:'PER-20X20', desc:'Perfil Quadrado 20×20mm',   dim:3000 },
-    { id:'S04', code:'TUBO-60X2', desc:'Tubo Redondo 60×2mm',       dim:6000 },
-    { id:'S05', code:'CAN-25X25', desc:'Cantoneira 25×25mm',        dim:6000 },
+    { id:'S01', code:'PER-40X40', desc:'Perfil Quadrado 40×40mm',   dims: [{dim: 6000, qty: 40}] },
+    { id:'S02', code:'PER-50X30', desc:'Perfil Retangular 50×30mm', dims: [{dim: 6000, qty: 25}] },
+    { id:'S03', code:'PER-20X20', desc:'Perfil Quadrado 20×20mm',   dims: [{dim: 3000, qty: 60}] },
+    { id:'S04', code:'TUBO-60X2', desc:'Tubo Redondo 60×2mm',       dims: [{dim: 6000, qty: 15}] },
+    { id:'S05', code:'CAN-25X25', desc:'Cantoneira 25×25mm',        dims: [{dim: 6000, qty: 8}] },
   ],
-  barras: [
-    { id:'B001', sku:'PER-40X40', lote:'LF-2024-03', dim:6000, qty:40 },
-    { id:'B002', sku:'PER-50X30', lote:'LF-2024-03', dim:6000, qty:25 },
-    { id:'B003', sku:'PER-20X20', lote:'LF-2024-02', dim:3000, qty:60 },
-    { id:'B004', sku:'TUBO-60X2', lote:'LF-2024-04', dim:6000, qty:15 },
-    { id:'B005', sku:'CAN-25X25', lote:'LF-2024-01', dim:6000, qty:8  },
-  ],
+  // Barras movidas para dentro de skus.dims
   ordens: [
     { id:'OP-001', sku:'PER-40X40', dim:1200, qty:8,  entrega:'2026-04-15', cliente:'Metalfab Ltda',     status:'pending', lote:null },
     { id:'OP-002', sku:'PER-50X30', dim:850,  qty:12, entrega:'2026-04-16', cliente:'Estrutura Tech',    status:'pending', lote:null },
@@ -53,7 +47,8 @@ function formatDate(iso) {
 }
 function getSkuDim(code) {
   const s = appState.skus.find(x => x.code === code);
-  return s ? s.dim : 6000;
+  if (!s || !s.dims || s.dims.length === 0) return 6000;
+  return Math.max(...s.dims.map(d => d.dim)); // Returns the largest standard bar initially
 }
 
 // ─── ROUTER ─────────────────────────────────────────────────────
@@ -62,7 +57,6 @@ const ROUTES = {
   ordens:        renderOrdens,
   otimizador:    renderOtimizador,
   planos:        renderPlanos,
-  barras:        renderBarras,
   sobras:        renderSobras,
   skus:          renderSkus,
   configuracoes: renderConfiguracoes,

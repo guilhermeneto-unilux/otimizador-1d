@@ -1,111 +1,201 @@
-/* ===== CATÁLOGO SKUs – UNILUX 1D ===== */
+/* ===== SKUs & ESTOQUE UNIFICADO ===== */
 
 function renderSkus() {
-  document.getElementById('contentArea').innerHTML = `
+  const content = document.getElementById('contentArea');
+  
+  const rows = appState.skus.map(s => {
+    const sc = skuColor(s.code);
+    
+    // Calcula o total de barras em estoque desse SKU
+    const totalQty = s.dims ? s.dims.reduce((acc, d) => acc + (parseInt(d.qty)||0), 0) : 0;
+    
+    // Lista das dimensões para exibição
+    const dimsText = s.dims && s.dims.length > 0 
+      ? s.dims.map(d => `<span style="background:#e5e7eb; padding:2px 6px; border-radius:4px; font-size:11px;">${d.dim}mm (${d.qty}x)</span>`).join(' ')
+      : '<span style="color:#9ca3af;">Sem estoque</span>';
+
+    return `
+      <tr>
+        <td>
+          <span class="status-badge" style="background:${sc.bg}; color:${sc.text}; border:1px solid ${sc.text}33;">
+            ${s.code}
+          </span>
+        </td>
+        <td><div style="font-weight:500;">${s.desc}</div></td>
+        <td><div style="display:flex; gap:4px; flex-wrap:wrap;">${dimsText}</div></td>
+        <td>
+          <div style="font-weight:700; color:${totalQty > 0 ? 'var(--text)' : 'var(--red)'};">
+            ${totalQty} barras
+          </div>
+        </td>
+        <td style="text-align:right;">
+          <button class="btn btn-white btn-sm" onclick="_editSkuModal('${s.id}')">Editar Estoque</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  content.innerHTML = `
     <div class="pg-header">
       <div>
-        <div class="pg-eyebrow">${appState.skus.length} SKU(s) cadastrado(s)</div>
-        <h1 class="pg-title">Catálogo SKUs</h1>
+        <div class="pg-eyebrow">${appState.skus.length} perfis cadastrados</div>
+        <h1 class="pg-title">Catálogo e Estoque Virgem</h1>
       </div>
-      <div class="pg-actions">
-        <button class="btn btn-green" onclick="_novoSkuModal()">+ Novo SKU</button>
-      </div>
+      <button class="btn btn-green" onclick="_newSkuModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Novo Perfil & Estoque
+      </button>
     </div>
 
-    <div class="tbl-wrap">
-      <table class="tbl">
+    <div class="table-card">
+      <table class="table">
         <thead>
-          <tr><th>Código</th><th>Descrição</th><th>Dim. Padrão</th><th>Barras</th><th>Sobras</th><th></th></tr>
+          <tr>
+            <th>Código SKU</th>
+            <th>Descrição do Perfil</th>
+            <th>Dimensões & Lotes (mm)</th>
+            <th>Total Virgem em Estoque</th>
+            <th style="text-align:right;">Ações</th>
+          </tr>
         </thead>
-        <tbody>${_skusRows()}</tbody>
+        <tbody>
+          ${rows.length ? rows : '<tr><td colspan="5" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
+        </tbody>
       </table>
     </div>
   `;
 }
 
-function _skusRows() {
-  if (!appState.skus.length) {
-    return `<tr><td colspan="6" class="tbl-empty">Nenhum SKU cadastrado.</td></tr>`;
-  }
-  return appState.skus.map(s => {
-    const c      = skuColor(s.code);
-    const nBars  = appState.barras.filter(b => b.sku === s.code).reduce((acc, b) => acc + b.qty, 0);
-    const nSobras= appState.sobras.filter(x => x.sku === s.code).length;
-    return `
-    <tr>
-      <td><span class="sku-tag" style="background:${c.bg};color:${c.text};">${s.code}</span></td>
-      <td style="color:var(--text-700);">${s.desc}</td>
-      <td class="fw-700">${s.dim} mm</td>
-      <td style="color:var(--text-400);">${nBars} un</td>
-      <td style="color:var(--text-400);">${nSobras} retalho(s)</td>
-      <td style="text-align:right;">
-        <button class="btn btn-ghost btn-sm" onclick="_editSkuModal('${s.id}')">Editar</button>
-        <button class="btn btn-ghost btn-sm text-red" onclick="_deleteSku('${s.id}')">Remover</button>
-      </td>
-    </tr>`;
-  }).join('');
+function _getSkuFormHtml(sku = null) {
+  const code = sku ? sku.code : '';
+  const desc = sku ? sku.desc : '';
+  
+  // Extrai até 3 dimensões (se não tiver, deixa vazio)
+  const d1 = sku && sku.dims && sku.dims[0] ? sku.dims[0] : {dim:'', qty:''};
+  const d2 = sku && sku.dims && sku.dims[1] ? sku.dims[1] : {dim:'', qty:''};
+  const d3 = sku && sku.dims && sku.dims[2] ? sku.dims[2] : {dim:'', qty:''};
+
+  return `
+    <div class="form-group">
+      <label class="form-label">Código SKU (Ex: PER-40X40)</label>
+      <input type="text" class="form-control" id="skCode" value="${code}" ${sku ? 'disabled' : ''} style="text-transform:uppercase;">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição Comercial</label>
+      <input type="text" class="form-control" id="skDesc" value="${desc}">
+    </div>
+
+    <div style="margin:24px 0 16px; border-bottom:1px solid var(--border);">
+      <span style="font-size:12px; font-weight:700; color:var(--text-400); text-transform:uppercase;">Medidas & Estoque (Até 3 tamanhos por SKU)</span>
+    </div>
+
+    <!-- MEDIDA 1 -->
+    <div style="display:flex; gap:16px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Comprimento 1 (mm)</label>
+        <input type="number" class="form-control" id="skDim1" value="${d1.dim}" placeholder="Ex: 6000">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Qtd Barras 1</label>
+        <input type="number" class="form-control" id="skQty1" value="${d1.qty}" placeholder="Ex: 50">
+      </div>
+    </div>
+
+    <!-- MEDIDA 2 -->
+    <div style="display:flex; gap:16px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Comprimento 2 (mm) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
+        <input type="number" class="form-control" id="skDim2" value="${d2.dim}">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Qtd Barras 2</label>
+        <input type="number" class="form-control" id="skQty2" value="${d2.qty}">
+      </div>
+    </div>
+
+    <!-- MEDIDA 3 -->
+    <div style="display:flex; gap:16px; margin-bottom:0;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Comprimento 3 (mm) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
+        <input type="number" class="form-control" id="skDim3" value="${d3.dim}">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Qtd Barras 3</label>
+        <input type="number" class="form-control" id="skQty3" value="${d3.qty}">
+      </div>
+    </div>
+  `;
 }
 
-function _novoSkuModal() {
-  openModal('Novo SKU', `
-    <div class="form-group">
-      <label class="form-label">Código</label>
-      <input class="form-control" type="text" id="skCode" placeholder="ex: PER-40X40">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Descrição</label>
-      <input class="form-control" type="text" id="skDesc" placeholder="ex: Perfil Quadrado 40×40mm">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Dimensão Padrão da Barra (mm)</label>
-      <input class="form-control" type="number" id="skDim" placeholder="ex: 6000">
-    </div>
-  `, `
-    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-dark" onclick="_salvarSku()">Salvar SKU</button>
-  `);
+function _extractDimsFromForm() {
+  const dims = [];
+  for (let i=1; i<=3; i++) {
+    const d = parseInt(document.getElementById('skDim'+i).value);
+    const q = parseInt(document.getElementById('skQty'+i).value);
+    if (!isNaN(d) && d > 0 && !isNaN(q) && q >= 0) {
+      dims.push({ dim: d, qty: q });
+    }
+  }
+  return dims; // Ordena de forma decrescente para otimizador favorecer o maior? O Otimizador decide.
+}
+
+function _newSkuModal() {
+  openModal(
+    'Cadastrar Perfil & Estoque',
+    _getSkuFormHtml(),
+    `<button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-green" onclick="_salvarSku()">Salvar Perfil</button>`
+  );
 }
 
 function _salvarSku() {
-  const code = document.getElementById('skCode').value.toUpperCase().trim();
+  let code = document.getElementById('skCode').value.toUpperCase().trim();
   const desc = document.getElementById('skDesc').value.trim();
-  const dim  = parseInt(document.getElementById('skDim').value);
-  if (!code || !dim) { showToast('Preencha código e dimensão!', 'error'); return; }
-  if (appState.skus.find(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
+  
+  if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
+  if (appState.skus.some(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
+
+  const dims = _extractDimsFromForm();
+  if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento válido!', 'error'); return; }
+
   const id = `S${String(appState.skus.length + 1).padStart(2,'0')}`;
-  DB.saveSku({ id, code, desc, dim });
-  closeModal(); showToast(`SKU ${code} criado!`, 'success'); renderSkus();
+  const s = { id, code, desc, dims };
+  
+  appState.skus.push(s);
+  DB.saveSku(s);
+  
+  closeModal(); showToast('Perfil e estoque salvos!', 'success'); renderSkus();
 }
 
 function _editSkuModal(id) {
   const s = appState.skus.find(x => x.id === id);
   if (!s) return;
-  openModal('Editar SKU', `
-    <div class="form-group">
-      <label class="form-label">Descrição</label>
-      <input class="form-control" type="text" id="skEditDesc" value="${s.desc}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Dimensão Padrão (mm)</label>
-      <input class="form-control" type="number" id="skEditDim" value="${s.dim}">
-    </div>
-  `, `
-    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-dark" onclick="_saveEditSku('${id}')">Salvar</button>
-  `);
+  openModal(
+    `Editar Estoque: ${s.code}`,
+    _getSkuFormHtml(s),
+    `<div><button class="btn btn-white" style="color:var(--red);" onclick="if(confirm('Excluir este SKU e todo o seu estoque associado? irreversível.')) _deleteSku('${id}')">Excluir Tudo</button></div>
+     <div style="display:flex; gap:8px;">
+       <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-green" onclick="_saveEditSku('${id}')">Atualizar Estoque</button>
+     </div>`
+  );
+  document.getElementById('modalFooter').style.justifyContent = 'space-between';
 }
 
 function _saveEditSku(id) {
   const s = appState.skus.find(x => x.id === id);
   if (s) {
-    s.desc = document.getElementById('skEditDesc').value;
-    s.dim  = parseInt(document.getElementById('skEditDim').value);
+    s.desc = document.getElementById('skDesc').value.trim();
+    const dims = _extractDimsFromForm();
+    if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
+    s.dims = dims;
     DB.saveSku(s);
   }
-  closeModal(); showToast('SKU atualizado!', 'success'); renderSkus();
+  closeModal(); showToast('Estoque atualizado!', 'success'); renderSkus();
 }
 
 function _deleteSku(id) {
   appState.skus = appState.skus.filter(x => x.id !== id);
-  DB.deleteSku(id); showToast('SKU removido.', 'info'); renderSkus();
-}
+  DB.deleteSku(id); showToast('SKU removido.', 'info'); 
+  closeModal(); renderSkus();
+} 

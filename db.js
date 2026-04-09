@@ -20,23 +20,23 @@ const DB = {
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
-        const [skusReq, barrasReq, sobrasReq, ordensReq, lotesReq, histReq] = await Promise.all([
+        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq] = await Promise.all([
           supabaseClient.from('unilux_skus').select('*'),
-          supabaseClient.from('unilux_barras').select('*'),
           supabaseClient.from('unilux_sobras').select('*'),
           supabaseClient.from('unilux_ordens').select('*'),
           supabaseClient.from('unilux_lotes').select('*'),
           supabaseClient.from('unilux_historico').select('*')
         ]);
 
-        if (skusReq.error || barrasReq.error) {
-          console.warn('⚠️ Tabelas não encontradas no Supabase! Certifique-se de ter rodado o script SQL.');
+        if (skusReq.error) {
+          console.warn('⚠️ Tabelas não encontradas no Supabase!');
           this._fallbackLocal(initialData);
           return;
         }
 
         appState.skus   = skusReq.data || [];
-        appState.barras = barrasReq.data || [];
+        // Ensure dims array exists
+        appState.skus.forEach(s => { if (!s.dims) s.dims = []; });
         appState.sobras = sobrasReq.data || [];
         appState.ordens = ordensReq.data || [];
         appState.lotes  = lotesReq.data || [];
@@ -98,12 +98,6 @@ const DB = {
     if (error) console.error('Erro Ordens:', error);
   },
 
-  async saveBarra(b) {
-    if (!supabaseClient) return;
-    const { error } = await supabaseClient.from('unilux_barras').upsert(b);
-    if (error) console.error('Erro Barras:', error);
-  },
-
   async saveSobra(s) {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.from('unilux_sobras').upsert(s);
@@ -118,7 +112,6 @@ const DB = {
 
   async saveHistorico(h) {
     if (!supabaseClient) return;
-    // Histórico não tem Upsert manual pelo ID pois tem Serial auto-increment no banco
     const { error } = await supabaseClient.from('unilux_historico').insert(h);
     if (error) console.error('Erro Histórico:', error);
   },
@@ -129,11 +122,6 @@ const DB = {
     await supabaseClient.from('unilux_skus').delete().eq('id', id);
   },
 
-  async deleteBarra(id) {
-    if (!supabaseClient) return;
-    await supabaseClient.from('unilux_barras').delete().eq('id', id);
-  },
-  
   async deleteSobra(id) {
     if (!supabaseClient) return;
     await supabaseClient.from('unilux_sobras').delete().eq('id', id);
