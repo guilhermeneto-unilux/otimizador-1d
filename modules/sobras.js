@@ -172,8 +172,16 @@ function _clickWmsSlot(endereco, isOccupied) {
       `Estocar no Slot: ${endereco}`,
       `
         <div class="form-group">
-          <label class="form-label">Endereço Destino</label>
-          <input type="text" class="form-control" id="soEnd" value="${endereco}" disabled>
+          <label class="form-label">Endereço (Gaveta/Posição)</label>
+          <select class="form-control" id="soEnd">
+            ${_getAllWmsSlots().map(adr => {
+              const isOcc = appState.sobras.some(x => x.endereco === adr);
+              return `<option value="${adr}" ${adr === endereco ? 'selected' : ''} ${isOcc ? 'disabled' : ''}>
+                ${adr} ${isOcc ? '(OCUPADO)' : ''}
+              </option>`;
+            }).join('')}
+          </select>
+          <div class="form-hint">O cupados aparecem desabilitados. Selecione um espaço livre.</div>
         </div>
         <div class="form-row">
            <div class="form-group">
@@ -197,12 +205,12 @@ function _clickWmsSlot(endereco, isOccupied) {
   }
 }
 
-function _salvarSobra(endForced) {
+function _salvarSobra() {
   const sku = document.getElementById('soSku').value;
   const med = parseInt(document.getElementById('soMed').value);
-  if (!sku || !med) { showToast('Informe SKU e Medida!', 'error'); return; }
+  const endereco = document.getElementById('soEnd').value;
   
-  const endereco = document.getElementById('soEnd') ? document.getElementById('soEnd').value : endForced;
+  if (!sku || !med || !endereco) { showToast('Informe SKU, Medida e Endereço!', 'error'); return; }
   const novaSobra = { 
     id: `SC-${String(appState.nextSobraId++).padStart(3,'0')}`, 
     sku, 
@@ -225,8 +233,21 @@ function _consumirSobra(id) {
 }
 
 function _openManualSobraModal() {
-  const nextEnd = _findNextWmsSlot() || 'S/ Endereço';
+  const nextEnd = _findNextWmsSlot() || '';
   _clickWmsSlot(nextEnd, false);
+}
+
+function _getAllWmsSlots() {
+  const slots = [];
+  const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  WMS_QUADS.forEach(q => {
+    for(let r=0; r<q.rows; r++) {
+      for(let c=1; c<=q.cols; c++) {
+        slots.push(`${q.id}-${L[r]}${String(c).padStart(2,'0')}`);
+      }
+    }
+  });
+  return slots;
 }
 
 function _openWmsSearch() {
