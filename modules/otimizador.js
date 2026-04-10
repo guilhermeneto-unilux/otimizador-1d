@@ -84,6 +84,37 @@ function renderOtimizador() {
   `;
 }
 
+async function _salvarSku() {
+  const code = document.getElementById('skCode').value.trim();
+  const desc = document.getElementById('skDesc').value.trim();
+  const id   = document.getElementById('skId').value;
+
+  if (!code || !desc) { showToast('Preencha Código e Descrição!', 'error'); return; }
+
+  const divs = document.querySelectorAll('.dim-row');
+  const dims = [];
+  divs.forEach(d => {
+    const dim = parseInt(d.querySelector('.dim-input').value);
+    const qty = parseInt(d.querySelector('.qty-input').value);
+    if (dim > 0 && qty >= 0) dims.push({ dim, qty });
+  });
+
+  if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
+
+  const s = { id: id || `SKU-${Date.now()}`, code, desc, dims };
+  
+  if (!id) appState.skus.push(s);
+  else {
+    const idx = appState.skus.findIndex(x => x.id === id);
+    if (idx !== -1) appState.skus[idx] = s;
+  }
+
+  await DB.saveSku(s);
+  await DB.log(id ? "Editou SKU" : "Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
+  
+  closeModal(); showToast('Perfil e estoque salvos!', 'success'); renderSkus();
+}
+
 function _calcOtimizacao() {
   const loteId   = document.getElementById('otimLote').value;
   const minSobra = parseInt(document.getElementById('otimMinSobra').value) || 50;
@@ -245,8 +276,10 @@ function _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen)
   `;
 }
 
-function _finalizarOtimizacao() {
-  const { plans, loteId, minSobra, usedScraps } = window._lastOtimResult;
+async function _finalizarOtimizacao() {
+  const res = window._lastOtimResult;
+  if (!res) return;
+  const { plans, loteId, minSobra, usedScraps } = res;
 
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
@@ -298,6 +331,14 @@ function _finalizarOtimizacao() {
   const totalWaste = plans.reduce((s,p) => s + p.rem, 0);
   const aprov = totalLen > 0 ? ((1 - totalWaste/totalLen)*100).toFixed(2) : '0.00';
   
+  const planoFinal = {
+     id: `PL-${Date.now()}`,
+     loteId,
+     data: new Date().toISOString(),
+     aproveitamento: document.querySelector('.stat-val.green').textContent,
+     mapa: plans
+  };
+  
   const h = {
     lote_id: loteId,
     aproveitamento: aprov + '%',
@@ -314,7 +355,9 @@ function _finalizarOtimizacao() {
 
   const btn = document.getElementById('btnFinalizar');
   if (btn) { btn.disabled = true; btn.textContent = '✓ Aprovado'; }
-
+  await DB.savePlano(planoFinal);
+  await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras)`);
+  
   showToast(`Plano ${loteId} finalizado e Histórico salvo em Nuvem!`, 'success');
   updateBadges();
   setTimeout(() => navigate('planos'), 1200);

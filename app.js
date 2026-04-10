@@ -64,12 +64,17 @@ const ROUTES = {
 };
 
 function navigate(route) {
+  if (['configuracoes', 'usuarios', 'auditoria'].includes(route) && (!appState.currentUser || appState.currentUser.role !== 'admin')) {
+    showToast('Acesso negado', 'error');
+    return;
+  }
   appState.currentRoute = route;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('nav-' + route);
   if (el) el.classList.add('active');
   if (ROUTES[route]) ROUTES[route]();
   updateBadges();
+  console.log(`[LOG] Navegação para: ${route}`);
 }
 
 function updateBadges() {
@@ -106,6 +111,7 @@ function showToast(msg, type = 'success') {
 // ─── INIT ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await DB.init(APP_MOCK);
+  initAuth();
 
   document.querySelectorAll('.nav-item[data-route]').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.route); });

@@ -166,9 +166,10 @@ function _salvarSku() {
   const s = { id, code, desc, dims };
   
   appState.skus.push(s);
-  DB.saveSku(s);
+  await DB.saveSku(s);
+  await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
   
-  closeModal(); showToast('Perfil e estoque salvos!', 'success'); renderSkus();
+  closeModal(); showToast('Perfil salvo com sucesso!', 'success'); renderSkus();
 }
 
 function _editSkuModal(id) {
@@ -186,20 +187,23 @@ function _editSkuModal(id) {
   document.getElementById('modalFooter').style.justifyContent = 'space-between';
 }
 
-function _saveEditSku(id) {
+async function _saveEditSku(id) {
   const s = appState.skus.find(x => x.id === id);
   if (s) {
     s.desc = document.getElementById('skDesc').value.trim();
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
     s.dims = dims;
-    DB.saveSku(s);
+    await DB.saveSku(s);
+    await DB.log("Editou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
   }
   closeModal(); showToast('Estoque atualizado!', 'success'); renderSkus();
 }
 
-function _deleteSku(id) {
+async function _deleteSku(id) {
   appState.skus = appState.skus.filter(x => x.id !== id);
-  DB.deleteSku(id); showToast('SKU removido.', 'info'); 
+  await DB.deleteSku(id);
+  await DB.log("Removeu SKU", "unilux_skus", id);
+  showToast('SKU removido.', 'info'); 
   closeModal(); renderSkus();
-} 
+}

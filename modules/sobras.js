@@ -222,13 +222,17 @@ function _salvarSobra() {
   
   appState.sobras.push(novaSobra);
   DB.saveSobra(novaSobra);
+  DB.log("Cadastrou Sobra Manual", "unilux_sobras", `${novaSobra.sku} em ${endereco}`);
   closeModal(); showToast(`Sobra física alocada em ${endereco}`, 'success');
   renderSobras(); updateBadges();
 }
 
 function _consumirSobra(id) {
+  const s = appState.sobras.find(x => x.id === id);
   appState.sobras = appState.sobras.filter(s => s.id !== id);
-  DB.deleteSobra(id); showToast('Retalho removido.', 'info');
+  DB.deleteSobra(id); 
+  DB.log("Consumiu Sobra", "unilux_sobras", `${s ? s.sku : id} de ${s ? s.endereco : '?'}`);
+  showToast('Retalho removido.', 'info');
   closeModal(); renderSobras(); updateBadges();
 }
 

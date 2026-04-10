@@ -422,6 +422,26 @@ a { text-decoration: none; color: inherit; }
 .fw-700 { font-weight: 700; } .fw-800 { font-weight: 800; }
 .mt-4 { margin-top: 16px; } .mb-4 { margin-bottom: 16px; }
 
+/* AUTH & ROLES */
+.login-overlay {
+  position: fixed; inset: 0;
+  background: #f3f4f6;
+  display: none; align-items: center; justify-content: center;
+  z-index: 5000;
+}
+.login-overlay.active { display: flex; }
+.login-card {
+  background: #fff;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  width: 380px;
+  text-align: center;
+}
+.admin-only { display: none !important; }
+body.is-admin .admin-only { display: flex !important; }
+body.is-admin a.nav-item.admin-only { display: flex !important; }
+
 /* ================================================================
    WMS (Batalha Naval)
    ================================================================ */

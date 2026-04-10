@@ -11,8 +11,10 @@ const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_U
 const appState = {
   currentRoute: 'dashboard',
   ordens: [], lotes: [], planos: [], barras: [], sobras: [], historico: [], skus: [],
+  users: [], audit: [],
   nextLoteId: 1, nextSobraId: 1, nextPlanoId: 1,
-  configs: { trim_mm: 0, scrap_penalty_pct: 0 }
+  configs: { trim_mm: 0, scrap_penalty_pct: 0 },
+  currentUser: null
 };
 
 const DB = {
@@ -21,13 +23,14 @@ const DB = {
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
-        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq] = await Promise.all([
+        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq] = await Promise.all([
           supabaseClient.from('unilux_skus').select('*'),
           supabaseClient.from('unilux_sobras').select('*'),
           supabaseClient.from('unilux_ordens').select('*'),
           supabaseClient.from('unilux_lotes').select('*'),
           supabaseClient.from('unilux_historico').select('*'),
-          supabaseClient.from('unilux_configs').select('data').eq('id', 1).single()
+          supabaseClient.from('unilux_configs').select('data').eq('id', 1).single(),
+          supabaseClient.from('unilux_users').select('*')
         ]);
 
         if (skusReq.error) {
@@ -43,6 +46,7 @@ const DB = {
         appState.ordens = ordensReq.data || [];
         appState.lotes  = lotesReq.data || [];
         appState.historico = histReq.data || [];
+        appState.users = usersReq.data || [];
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
 
         // Atualiza os geradores de ID baseado no tamanho dos dados
