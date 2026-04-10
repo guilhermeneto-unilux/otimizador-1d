@@ -152,7 +152,7 @@ function _newSkuModal() {
   );
 }
 
-function _salvarSku() {
+async function _salvarSku() {
   let code = document.getElementById('skCode').value.toUpperCase().trim();
   const desc = document.getElementById('skDesc').value.trim();
   

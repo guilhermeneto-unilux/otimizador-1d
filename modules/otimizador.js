@@ -84,37 +84,6 @@ function renderOtimizador() {
   `;
 }
 
-async function _salvarSku() {
-  const code = document.getElementById('skCode').value.trim();
-  const desc = document.getElementById('skDesc').value.trim();
-  const id   = document.getElementById('skId').value;
-
-  if (!code || !desc) { showToast('Preencha Código e Descrição!', 'error'); return; }
-
-  const divs = document.querySelectorAll('.dim-row');
-  const dims = [];
-  divs.forEach(d => {
-    const dim = parseInt(d.querySelector('.dim-input').value);
-    const qty = parseInt(d.querySelector('.qty-input').value);
-    if (dim > 0 && qty >= 0) dims.push({ dim, qty });
-  });
-
-  if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
-
-  const s = { id: id || `SKU-${Date.now()}`, code, desc, dims };
-  
-  if (!id) appState.skus.push(s);
-  else {
-    const idx = appState.skus.findIndex(x => x.id === id);
-    if (idx !== -1) appState.skus[idx] = s;
-  }
-
-  await DB.saveSku(s);
-  await DB.log(id ? "Editou SKU" : "Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
-  
-  closeModal(); showToast('Perfil e estoque salvos!', 'success'); renderSkus();
-}
-
 function _calcOtimizacao() {
   const loteId   = document.getElementById('otimLote').value;
   const minSobra = parseInt(document.getElementById('otimMinSobra').value) || 50;

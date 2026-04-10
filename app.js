@@ -61,6 +61,9 @@ const ROUTES = {
   sobras:        renderSobras,
   skus:          renderSkus,
   configuracoes: renderConfiguracoes,
+  usuarios:      renderUsuarios,
+  auditoria:     renderAuditoria,
+  manual:        renderManual
 };
 
 function navigate(route) {
@@ -125,3 +128,75 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   navigate('dashboard');
 });
+
+function initAuth() {
+  const saved = localStorage.getItem('unilux_session');
+  if (saved) {
+    appState.currentUser = JSON.parse(saved);
+    if (appState.currentUser.role === 'admin') document.body.classList.add('is-admin');
+  }
+  _updateLoginUI();
+}
+
+function _updateLoginUI() {
+  const overlay = document.getElementById('loginOverlay');
+  if (!appState.currentUser) {
+    overlay.innerHTML = `
+      <div class="login-card">
+        <div class="logo-box" style="margin: 0 auto 16px; width:48px; height:48px; font-size:24px;">U</div>
+        <h2 style="margin-bottom:8px;">Bem-vindo</h2>
+        <p style="color:var(--text-400); font-size:13px; margin-bottom:24px;">Acesse o Otimizador Unilux</p>
+        <div class="form-group" style="text-align:left;">
+          <label class="form-label">Email</label>
+          <input type="email" id="lEmail" class="form-control" placeholder="admin@unilux.com.br">
+        </div>
+        <div class="form-group" style="text-align:left;">
+          <label class="form-label">Senha</label>
+          <input type="password" id="lPass" class="form-control" placeholder="••••••">
+        </div>
+        <button class="btn btn-dark" style="width:100%; justify-content:center; padding:12px;" onclick="doLogin()">Entrar no Sistema</button>
+      </div>
+    `;
+    overlay.classList.add('active');
+  } else {
+    overlay.classList.remove('active');
+    const footer = document.querySelector('.sidebar-footer');
+    if (footer) {
+      footer.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+          <div>
+            <div class="dot"></div> ${appState.currentUser.name}
+            <div style="font-size:9px; margin-top:2px; opacity:0.6;">${appState.currentUser.role.toUpperCase()}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Sair" style="padding:4px;">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
+        </div>
+      `;
+    }
+  }
+}
+
+async function doLogin() {
+  const email = document.getElementById('lEmail').value;
+  const pass = document.getElementById('lPass').value;
+  
+  const user = appState.users.find(u => u.email === email && u.password === pass);
+  if (user) {
+    appState.currentUser = user;
+    localStorage.setItem('unilux_session', JSON.stringify(user));
+    if (user.role === 'admin') document.body.classList.add('is-admin');
+    _updateLoginUI();
+    showToast(`Bem-vindo, ${user.name}!`, 'success');
+  } else {
+    showToast('Credenciais inválidas ou Usuário não cadastrado!', 'error');
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('unilux_session');
+  appState.currentUser = null;
+  document.body.classList.remove('is-admin');
+  _updateLoginUI();
+  navigate('dashboard');
+}
