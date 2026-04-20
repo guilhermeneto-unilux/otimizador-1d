@@ -52,10 +52,6 @@ function renderSobras() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             Novo Retalho Manual
           </button>
-          <button class="btn btn-dark" onclick="_openModoOperador()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg>
-            Modo Operador
-          </button>
           <button class="btn btn-white" onclick="_imprimirQrCodes()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h6v7"></path><path d="M18 9V2h-6"></path><path d="M6 22v-7h6"></path><path d="M18 22v-7h-6"></path></svg>
             Imprimir QR Codes
@@ -203,18 +199,38 @@ function _clickWmsSlot(endereco, isOccupied) {
       `,
       `
         <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
-        <button class="btn btn-green" onclick="_salvarSobra('${endereco}')">Guardar no WMS</button>
+        <button class="btn btn-green" onclick="_salvarSobra()">Guardar no WMS</button>
       `
     );
+    // Para fluxo manual via clique no '+', adicionamos o hidden input esperado pelo _salvarSobra
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.id = 'soEndTarget';
+    hidden.value = endereco;
+    document.getElementById('modalBody').appendChild(hidden);
   }
 }
 
 function _salvarSobra() {
-  const sku = document.getElementById('soSku').value;
-  const med = parseInt(document.getElementById('soMed').value);
-  const endereco = document.getElementById('soEndTarget').value;
+  const elSku = document.getElementById('soSku');
+  const elMed = document.getElementById('soMed');
+  const elEnd = document.getElementById('soEndTarget');
+  
+  if (!elSku || !elMed || !elEnd) return;
+
+  const sku = elSku.value;
+  const med = parseInt(elMed.value);
+  const endereco = elEnd.value;
   
   if (!sku || !med || !endereco) { showToast('Informe SKU, Medida e Endereço!', 'error'); return; }
+
+  // Verificação de segurança: já tem algo aqui?
+  if (appState.sobras.some(s => s.endereco === endereco)) {
+    showToast(`O endereço ${endereco} já está ocupado!`, 'error');
+    closeModal();
+    return;
+  }
+
   const novaSobra = { 
     id: `SC-${String(appState.nextSobraId++).padStart(3,'0')}`, 
     sku, 
@@ -227,7 +243,9 @@ function _salvarSobra() {
   appState.sobras.push(novaSobra);
   DB.saveSobra(novaSobra);
   DB.log("Cadastrou Sobra Manual", "unilux_sobras", `${novaSobra.sku} em ${endereco}`);
-  closeModal(); showToast(`Sobra física alocada em ${endereco}`, 'success');
+  
+  closeModal(); 
+  showToast(`Sobra física alocada em ${endereco}`, 'success');
   renderSobras(); updateBadges();
 }
 
@@ -361,10 +379,6 @@ function _getAllWmsSlots() {
 
 function _openWmsSearch() {
   showToast('Em breve: Busca de Peças perdidas!', 'info');
-}
-
-function _openModoOperador() {
-  _openManualSobraModal();
 }
 
 function _imprimirQrCodes() {
