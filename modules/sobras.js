@@ -52,9 +52,13 @@ function renderSobras() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             Novo Retalho Manual
           </button>
-          <button class="btn btn-white" onclick="_openWmsSearch()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            Buscar
+          <button class="btn btn-dark" onclick="_openModoOperador()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg>
+            Modo Operador
+          </button>
+          <button class="btn btn-white" onclick="_imprimirQrCodes()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h6v7"></path><path d="M18 9V2h-6"></path><path d="M6 22v-7h6"></path><path d="M18 22v-7h-6"></path></svg>
+            Imprimir QR Codes
           </button>
         </div>
       </div>
@@ -255,6 +259,19 @@ function _getAllWmsSlots() {
 }
 
 function _openWmsSearch() {
-  // Uma funcionalidade extra para listar tudo e procurar por medida
   showToast('Em breve: Busca de Peças perdidas!', 'info');
+}
+
+function _openModoOperador() {
+  // Mostra modal para escolher o quadrante
+  const btns = WMS_QUADS.map(q => {
+    return `<button class="btn btn-dark" style="background:${q.bg}; color:${q.text}; ${q.border ? 'border:1px solid '+q.border : ''}; width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="closeModal(); renderCadastroRapido('${q.id}')">${q.name.toUpperCase()}</button>`;
+  }).join('');
+
+  openModal(
+    'Escolha o Quadrante',
+    `<p style="margin-bottom:16px; color:var(--text-500);">Selecione a prateleira para começar a registrar sobras:</p>
+     <div style="display:flex; flex-direction:column; gap:8px;">${btns}</div>`,
+    `<button class="btn btn-white" onclick="closeModal()">Cancelar</button>`
+  );
 }

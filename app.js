@@ -126,7 +126,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const overlay = document.getElementById('modalOverlay');
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
 
-  navigate('dashboard');
+  // Detectar Modo Rápido via QR code (?modo=rapido&q=VERDE)
+  const urlParams = new URLSearchParams(window.location.search);
+  const modoRapido = urlParams.get('modo');
+  const quadranteQR = urlParams.get('q');
+
+  if (modoRapido === 'rapido' && quadranteQR) {
+    renderCadastroRapido(quadranteQR.toUpperCase());
+  } else {
+    navigate('dashboard');
+  }
 });
 
 function initAuth() {
