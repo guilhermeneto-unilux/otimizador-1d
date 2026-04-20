@@ -212,7 +212,7 @@ function _clickWmsSlot(endereco, isOccupied) {
 function _salvarSobra() {
   const sku = document.getElementById('soSku').value;
   const med = parseInt(document.getElementById('soMed').value);
-  const endereco = document.getElementById('soEnd').value;
+  const endereco = document.getElementById('soEndTarget').value;
   
   if (!sku || !med || !endereco) { showToast('Informe SKU, Medida e Endereço!', 'error'); return; }
   const novaSobra = { 
@@ -240,9 +240,110 @@ function _consumirSobra(id) {
   closeModal(); renderSobras(); updateBadges();
 }
 
+// ─── NOVO FLUXO: PASSO 1 (ESCANEAR) ───────────────────────────
 function _openManualSobraModal() {
-  const nextEnd = _findNextWmsSlot() || '';
-  _clickWmsSlot(nextEnd, false);
+  // Modal 1: Identificação da Prateleira
+  const btns = WMS_QUADS.map(q => {
+    return `<button class="btn btn-dark" style="background:${q.bg}; color:${q.text}; ${q.border ? 'border:1px solid '+q.border : ''}; padding:14px; font-size:13px; font-weight:700;" onclick="_avancarCadastroSobra('${q.id}')">${q.name.toUpperCase()}</button>`;
+  }).join('');
+
+  openModal(
+    'Identificação da Prateleira',
+    `
+      <div style="text-align:center; padding:16px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px; color:var(--green);"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+        <h3 style="margin-bottom:8px;">Aponte o leitor para o QR Code da prateleira</h3>
+        
+        <input type="text" id="scanQuadInput" 
+               style="width: 100%; text-align: center; font-size: 20px; font-weight: 800; padding: 16px; border: 2px dashed var(--text-400); border-radius: 8px; margin-bottom: 24px; text-transform: uppercase;" 
+               placeholder="BIPAR CÓDIGO AQUI" autocomplete="off">
+               
+        <p style="font-size:12px; color:var(--text-400); margin-bottom:16px; font-weight:700; text-transform:uppercase;">Ou selecione manualmente abaixo se estiver sem leitor:</p>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+          ${btns}
+        </div>
+      </div>
+    `,
+    `<button class="btn btn-white" onclick="closeModal()">Cancelar e Voltar</button>`
+  );
+
+  // Auto-focus no campo pra pegar a leitura da pistola
+  const scanInput = document.getElementById('scanQuadInput');
+  setTimeout(() => scanInput.focus(), 100);
+
+  // Escutar 'Enter' no campo de scan
+  scanInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = scanInput.value.toUpperCase().trim();
+      if (WMS_QUADS.some(q => q.id === val)) {
+        _avancarCadastroSobra(val);
+      } else {
+        showToast('Código de quadrante não reconhecido!', 'error');
+        scanInput.value = '';
+      }
+    }
+  });
+}
+
+function _findNextWmsSlotByQuad(quadId) {
+  const occupied = appState.sobras.map(s => s.endereco).filter(Boolean);
+  const q = WMS_QUADS.find(x => x.id === quadId);
+  if(!q) return null;
+  const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  
+  for(let r=0; r<q.rows; r++) {
+    for(let c=1; c<=q.cols; c++) {
+      const adr = `${q.id}-${L[r]}${String(c).padStart(2,'0')}`;
+      if (!occupied.includes(adr)) return adr;
+    }
+  }
+  return null;
+}
+
+// ─── NOVO FLUXO: PASSO 2 (PREENCHER DADOS) ─────────────────────
+function _avancarCadastroSobra(quadId) {
+  const nextSlot = _findNextWmsSlotByQuad(quadId);
+  const q = WMS_QUADS.find(x => x.id === quadId);
+  
+  if (!nextSlot) {
+    showToast(`O quadrante ${q.name} está completamento cheio!`, 'error');
+    return;
+  }
+
+  // Prepara o formulário com o target locado
+  openModal(
+    `Cadastrar Retalho: Quadrante ${q.name}`,
+    `
+      <div style="background:#f9fafb; padding:20px; border-radius:8px; border:2px solid var(--border); text-align:center; margin-bottom:24px;">
+        <div style="font-size:11px; font-weight:800; color:var(--text-400); text-transform:uppercase; margin-bottom:4px;">Guardar na Posição</div>
+        <div style="font-size:32px; font-weight:900; color:var(--green-dk);">${nextSlot}</div>
+        <input type="hidden" id="soEndTarget" value="${nextSlot}">
+      </div>
+
+      <div class="form-row">
+         <div class="form-group">
+           <label class="form-label" style="font-weight:700;">Perfil da Sobra</label>
+           <select class="form-control" id="soSku" style="font-size:16px; padding:12px;">
+              <option value="">-- selecione o perfil --</option>
+              ${appState.skus.map(sk => `<option value="${sk.code}">${sk.code} - ${sk.desc}</option>`).join('')}
+           </select>
+         </div>
+         <div class="form-group">
+           <label class="form-label" style="font-weight:700;">Tamanho (mm)</label>
+           <input type="number" class="form-control" id="soMed" placeholder="Ex: 2400" style="font-size:16px; padding:12px;">
+         </div>
+      </div>
+    `,
+    `
+      <button class="btn btn-white" onclick="_openManualSobraModal()">← Voltar</button>
+      <button class="btn btn-green" onclick="_salvarSobra()">✓ Salvar Posição</button>
+    `
+  );
+  
+  // Auto-focus no campo de SKU
+  setTimeout(() => document.getElementById('soSku').focus(), 100);
 }
 
 function _getAllWmsSlots() {
@@ -263,15 +364,45 @@ function _openWmsSearch() {
 }
 
 function _openModoOperador() {
-  // Mostra modal para escolher o quadrante
-  const btns = WMS_QUADS.map(q => {
-    return `<button class="btn btn-dark" style="background:${q.bg}; color:${q.text}; ${q.border ? 'border:1px solid '+q.border : ''}; width:100%; justify-content:center; padding:14px; font-size:16px;" onclick="closeModal(); renderCadastroRapido('${q.id}')">${q.name.toUpperCase()}</button>`;
+  _openManualSobraModal();
+}
+
+function _imprimirQrCodes() {
+  // Gera QR codes simples (apenas o TEXTO do ID do quadrante, ex: "VERDE", "ROXO", etc.)
+  const qrHtml = WMS_QUADS.map(q => {
+    const dataTxt = encodeURIComponent(q.id);
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${dataTxt}`;
+    return `
+      <div class="qr-print-card" style="border-top: 8px solid ${q.bg}; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; text-align: center;">
+        <img src="${qrUrl}" alt="QR ${q.name}" width="200" height="200" style="margin-bottom: 20px; image-rendering: pixelated;">
+        <div style="font-size: 28px; font-weight: 900; letter-spacing: 2px; color:${q.bg === '#ffffff' ? '#111' : q.bg};">${q.name.toUpperCase()}</div>
+        <div style="font-size: 14px; color: #9ca3af; margin-top: 8px; font-weight: 600;">Leia com o scanner da fábrica</div>
+      </div>
+    `;
   }).join('');
 
-  openModal(
-    'Escolha o Quadrante',
-    `<p style="margin-bottom:16px; color:var(--text-500);">Selecione a prateleira para começar a registrar sobras:</p>
-     <div style="display:flex; flex-direction:column; gap:8px;">${btns}</div>`,
-    `<button class="btn btn-white" onclick="closeModal()">Cancelar</button>`
-  );
+  const printWin = window.open('', '_blank');
+  printWin.document.write(`
+    <!DOCTYPE html>
+    <html><head>
+      <title>Códigos de Prateleira - WMS Unilux</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; padding: 40px; background: #f9fafb; }
+        h1 { text-align: center; margin-bottom: 40px; font-size: 24px; color: #111827; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 900px; margin: 0 auto; }
+        @media print { 
+          body { padding: 0; background: #fff; } 
+          .grid { gap: 16px; max-width: 100%; } 
+          .qr-print-card { break-inside: avoid; border: 2px solid #000 !important; }
+        }
+      </style>
+    </head><body>
+      <h1>CÓDIGOS DE ESCANEAMENTO · WMS UNILUX</h1>
+      <div class="grid">${qrHtml}</div>
+      <script>setTimeout(() => window.print(), 800);</script>
+    </body></html>
+  `);
+  printWin.document.close();
 }
