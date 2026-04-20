@@ -138,5 +138,33 @@ const DB = {
   async deleteSobra(id) {
     if (!supabaseClient) return;
     await supabaseClient.from('unilux_sobras').delete().eq('id', id);
+  },
+
+  async log(action, target_table, details = '') {
+    if (!supabaseClient || !appState.currentUser) return;
+    try {
+      const { error } = await supabaseClient.from('unilux_audit').insert({
+        user_id: appState.currentUser.id,
+        user_name: appState.currentUser.name,
+        action,
+        target_table,
+        details
+      });
+      if (error) console.error('Erro Log:', error);
+    } catch (e) {
+      console.error('Audit Log failed:', e);
+    }
+  },
+
+  async fetchAudit() {
+    if (!supabaseClient) return [];
+    try {
+      const { data, error } = await supabaseClient.from('unilux_audit').select('*').order('timestamp', { ascending: false }).limit(100);
+      if (error) { console.error('Erro Audit:', error); return []; }
+      return data || [];
+    } catch (e) {
+      console.error('Fetch Audit failed:', e);
+      return [];
+    }
   }
 };
