@@ -88,6 +88,10 @@ function _getSkuFormHtml(sku = null) {
       <label class="form-label">Descrição Comercial</label>
       <input type="text" class="form-control" id="skDesc" value="${desc}">
     </div>
+    <div class="form-group">
+      <label class="form-label">Sobra Mínima para Guarda (mm) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
+      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 50}">
+    </div>
 
     <div style="margin:24px 0 16px; border-bottom:1px solid var(--border);">
       <span style="font-size:12px; font-weight:700; color:var(--text-400); text-transform:uppercase;">Medidas & Estoque (Até 3 tamanhos por SKU)</span>
@@ -155,6 +159,7 @@ function _newSkuModal() {
 async function _salvarSku() {
   let code = document.getElementById('skCode').value.toUpperCase().trim();
   const desc = document.getElementById('skDesc').value.trim();
+  const minSobra = parseInt(document.getElementById('skMinSobra').value) || 50;
   
   if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
   if (appState.skus.some(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
@@ -163,7 +168,7 @@ async function _salvarSku() {
   if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento válido!', 'error'); return; }
 
   const id = `S${String(appState.skus.length + 1).padStart(2,'0')}`;
-  const s = { id, code, desc, dims };
+  const s = { id, code, desc, dims, min_sobra: minSobra };
   
   appState.skus.push(s);
   await DB.saveSku(s);
@@ -191,6 +196,7 @@ async function _saveEditSku(id) {
   const s = appState.skus.find(x => x.id === id);
   if (s) {
     s.desc = document.getElementById('skDesc').value.trim();
+    s.min_sobra = parseInt(document.getElementById('skMinSobra').value) || 50;
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
     s.dims = dims;

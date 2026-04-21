@@ -40,7 +40,16 @@ const DB = {
         }
 
         appState.skus   = skusReq.data || [];
-        appState.skus.forEach(s => { if (!s.dims) s.dims = []; });
+        appState.skus.forEach(s => { 
+          if (!s.dims) s.dims = []; 
+          if (s.desc && s.desc.startsWith('{"_desc"')) {
+            try {
+              const parsed = JSON.parse(s.desc);
+              s.desc = parsed._desc;
+              s.min_sobra = parsed.min;
+            } catch(e) {}
+          }
+        });
         appState.sobras = sobrasReq.data || [];
         appState.ordens = ordensReq.data || [];
         
@@ -106,7 +115,12 @@ const DB = {
 
   async saveSku(s) {
     if (!supabaseClient) return;
-    const { error } = await supabaseClient.from('unilux_skus').upsert(s);
+    const dbObj = { ...s };
+    if (dbObj.min_sobra !== undefined) {
+      dbObj.desc = JSON.stringify({ _desc: dbObj.desc, min: dbObj.min_sobra });
+      delete dbObj.min_sobra;
+    }
+    const { error } = await supabaseClient.from('unilux_skus').upsert(dbObj);
     if (error) console.error('Erro SKUs:', error);
   },
 
@@ -149,6 +163,11 @@ const DB = {
   async deleteSku(id) {
     if (!supabaseClient) return;
     await supabaseClient.from('unilux_skus').delete().eq('id', id);
+  },
+
+  async deleteOrdem(id) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_ordens').delete().eq('id', id);
   },
 
   async deleteSobra(id) {

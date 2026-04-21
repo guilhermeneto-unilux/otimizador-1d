@@ -40,7 +40,7 @@ function renderOrdens() {
         <thead>
           <tr>
             <th style="width:36px;"><input type="checkbox" id="checkAll" onchange="_toggleAll(this)"></th>
-            <th>OP</th><th>SKU</th><th>Dimensão Corte</th><th>QTD</th><th>Entrega</th><th>Cliente</th><th>Status</th>
+            <th>OP</th><th>SKU</th><th>Dimensão Corte</th><th>QTD</th><th>Entrega</th><th>Cliente</th><th>Status</th><th style="text-align:right;">Ação</th>
           </tr>
         </thead>
         <tbody>
@@ -65,8 +65,15 @@ function _ordensRows(list) {
       <td style="color:var(--text-400);">${_fmtDate(o.entrega)}</td>
       <td style="color:var(--text-400);">${o.cliente || '—'}</td>
       <td><span class="status-badge ${o.status === 'pending' ? 'badge-pending' : o.status === 'in_batch' ? 'badge-batch' : 'badge-approved'}">
-        ${o.status === 'pending' ? 'Pendente' : o.status === 'in_batch' ? 'Em Lote' : 'Concluído'}
+        ${o.status === 'pending' ? 'Pendente' : o.status === 'in_batch' ? `Lote ${o.lote}` : 'Concluído'}
       </span></td>
+      <td style="text-align:right;">
+        ${o.status === 'pending' 
+          ? `<button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px 8px;" onclick="if(confirm('Tem certeza que deseja excluir esta Ordem de Produção?')) _deleteOrdem('${o.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>` 
+          : o.status === 'in_batch' 
+          ? `<button class="btn btn-white btn-sm" style="padding:4px 8px;" onclick="_reverterOrdem('${o.id}')" title="Voltar para Pendente">Reverter</button>` 
+          : ''}
+      </td>
     </tr>`;
   }).join('');
 }
@@ -142,6 +149,35 @@ function _criarLote() {
   });
   showToast(`Lote ${id} criado!`, 'success');
   navigate('otimizador');
+}
+
+async function _deleteOrdem(id) {
+  appState.ordens = appState.ordens.filter(o => o.id !== id);
+  await DB.deleteOrdem(id);
+  await DB.log("Removeu Ordem", "unilux_ordens", id);
+  renderOrdens(); updateBadges();
+  showToast(`Ordem ${id} removida!`, 'info');
+}
+
+async function _reverterOrdem(id) {
+  const o = appState.ordens.find(x => x.id === id);
+  if (!o) return;
+  
+  if (o.lote) {
+    const lote = appState.lotes.find(l => l.id === o.lote);
+    if (lote) {
+      lote.ordens = lote.ordens.filter(oid => oid !== id);
+      DB.saveLote(lote);
+    }
+  }
+
+  o.status = 'pending';
+  o.lote = null;
+  await DB.saveOrdem(o);
+  
+  await DB.log("Reverteu Ordem", "unilux_ordens", `${id} voltou para Pendente`);
+  renderOrdens(); updateBadges();
+  showToast(`Ordem ${id} voltou para status pendente!`, 'success');
 }
 
 /* =====================================================================

@@ -28,25 +28,12 @@ function renderOtimizador() {
           </div>
 
           <div class="form-group">
-            <label class="form-label">Estratégia</label>
-            <select class="form-control" id="otimStrategy">
-              <option value="ffd">First Fit Decreasing (FFD)</option>
-              <option value="bfd">Best Fit Decreasing (BFD)</option>
+            <label class="form-label">Lote Selecionado</label>
+            <select class="form-control" id="otimLote">
+              <option value="">— Escolha um lote —</option>
+              ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s)</option>`).join('')}
             </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">
-              <input type="checkbox" id="otimUsarSobras" checked style="margin-right:6px;">
-              Priorizar Retalhos
-            </label>
-            <div class="form-hint">Usa sobras antes de barras virgens.</div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Sobra Mínima (mm)</label>
-            <input class="form-control" type="number" id="otimMinSobra" value="50">
-            <div class="form-hint">Abaixo disso, é descarte.</div>
+            <div class="form-hint" style="margin-top:8px;">A estratégia é unificada: utilizar retalhos apenas se o desperdício for <b>≤ 20%</b>, visando otimização máxima das barras virgens. As sobras mínimas são configuradas por SKU.</div>
           </div>
         </div>
 
@@ -86,7 +73,6 @@ function renderOtimizador() {
 
 function _calcOtimizacao() {
   const loteId   = document.getElementById('otimLote').value;
-  const minSobra = parseInt(document.getElementById('otimMinSobra').value) || 50;
   const cfgTrim  = appState.configs ? (appState.configs.trim_mm || 0) : 0;
   const cfgPen   = appState.configs ? (appState.configs.scrap_penalty_pct || 0) / 100 : 0;
 
@@ -112,33 +98,51 @@ function _calcOtimizacao() {
     const bins  = [];
     const scraps= appState.sobras.filter(s => s.sku === sku).sort((a,b) => a.medida - b.medida);
 
+    const sObj = appState.skus.find(x => x.code === sku);
+    const skuMinSobra = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+
     pcs.forEach(pc => {
       // Tentar bin aberto
       const fit = bins.find(b => b.rem >= pc.dim);
       if (fit) { fit.pcs.push(pc); fit.rem -= pc.dim; return; }
 
-      // Tentar sobra
-      const si = scraps.findIndex(s => (s.medida - cfgTrim) >= pc.dim && !usedScraps.includes(s.id));
-      if (si !== -1) {
-        const s = scraps[si];
+      // Estratégia dos Retalhos (Máximo 20% de desperdício do retalho)
+      let bestScrapIdx = -1;
+      let minWaste = Infinity;
+      
+      for (let j = 0; j < scraps.length; j++) {
+        const s = scraps[j];
+        if (usedScraps.includes(s.id)) continue;
+        
+        const available = s.medida - cfgTrim;
+        if (available >= pc.dim) {
+          const waste = available - pc.dim;
+          const wastePct = waste / s.medida;
+          
+          if (wastePct <= 0.20 && waste < minWaste) {
+            bestScrapIdx = j;
+            minWaste = waste;
+          }
+        }
+      }
+
+      if (bestScrapIdx !== -1) {
+        const s = scraps[bestScrapIdx];
         usedScraps.push(s.id);
         const uLen = s.medida - cfgTrim;
         bins.push({ type:'scrap', srcId:s.id, len:s.medida, usable:uLen, sku, pcs:[pc], rem:uLen - pc.dim });
         return;
       }
 
-      // Barra virgem intelignte (Zero Refugo ou Max Scrap)
+      // Barra virgem (Best Fit para gerar recado limpo se possível)
       let chosenDim = null;
-      const sObj = appState.skus.find(x => x.code === sku);
       if (sObj && sObj.dims) {
         const validos = sObj.dims.filter(d => d.qty > 0 && (d.dim - cfgTrim) >= pc.dim);
         if (validos.length > 0) {
-           // Filtra aquelas cujo refugo seria MENOR que a sobra mínima tolerada (cortes limpos, perda matemática pura de sucata pequena)
-           const zeradores = validos.filter(d => ((d.dim - cfgTrim) - pc.dim) < minSobra).sort((a,b) => ((a.dim - cfgTrim) - pc.dim) - ((b.dim - cfgTrim) - pc.dim));
+           const zeradores = validos.filter(d => ((d.dim - cfgTrim) - pc.dim) < skuMinSobra).sort((a,b) => ((a.dim - cfgTrim) - pc.dim) - ((b.dim - cfgTrim) - pc.dim));
            if (zeradores.length > 0) {
-              chosenDim = zeradores[0].dim; // Escolhe a que gera o menor refugo "inevitável" possivel
+              chosenDim = zeradores[0].dim; 
            } else {
-              // Se nenhuma salvar o corte como recado limpo (todas geram sobra), pega a MAIOR sobra possivel
               const maiores = validos.sort((a,b) => b.dim - a.dim);
               chosenDim = maiores[0].dim;
            }
@@ -153,18 +157,21 @@ function _calcOtimizacao() {
     bins.forEach(b => plans.push(b));
   });
 
-  _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen);
+  _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen);
 }
 
-function _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen) {
-  window._lastOtimResult = { plans, loteId, minSobra, usedScraps };
+function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
+  window._lastOtimResult = { plans, loteId, usedScraps };
   const area = document.getElementById('otimResults');
 
   const totalLen   = plans.reduce((s,p) => s + p.len, 0);
   const totalWasteObj = plans.reduce((acc, p) => {
+     const sObj = appState.skus.find(x => x.code === p.sku);
+     const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+
      // A sobra real devolvida ao estoque
      const realSobra = p.rem;
-     if (realSobra >= minSobra) {
+     if (realSobra >= skuMin) {
         acc.gerouSobra++;
         acc.perdaEstimada += (realSobra * cfgPen); // penalty do retalho retornado
      } else {
@@ -209,6 +216,9 @@ function _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen)
 
     <!-- Bar maps -->
     ${plans.map((p, idx) => {
+      const sObj = appState.skus.find(x => x.code === p.sku);
+      const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+
       const opColors = {};
       let ci = 0;
       p.pcs.forEach(pc => { if (!opColors[pc.op]) opColors[pc.op] = SEG_COLORS[ci++ % SEG_COLORS.length]; });
@@ -220,7 +230,7 @@ function _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen)
         </div>`;
       }).join('');
       const wastePct = ((p.rem + cfgTrim) / p.len * 100).toFixed(2);
-      const wasteEl = p.rem >= minSobra
+      const wasteEl = p.rem >= skuMin
         ? `<div class="bar-seg bar-seg-waste" style="width:${wastePct}%;" title="Sobra: ${p.rem}mm (+${cfgTrim}mm refile)">
             <span>${p.rem > 100 ? p.rem+'mm' : ''}</span>
            </div>`
@@ -238,7 +248,7 @@ function _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen)
           <div class="bar-track">${segs}${wasteEl}</div>
           <div class="bar-meta">
             <span>${p.pcs.length} peça(s)</span>
-            <span>Sobra: ${p.rem}mm ${p.rem >= minSobra ? '→ Estoque' : '(descarte)'}</span>
+            <span>Sobra: ${p.rem}mm ${p.rem >= skuMin ? '→ Estoque' : '(descarte)'}</span>
           </div>
         </div>`;
     }).join('')}
@@ -248,7 +258,7 @@ function _renderResultados(plans, loteId, minSobra, usedScraps, cfgTrim, cfgPen)
 async function _finalizarOtimizacao() {
   const res = window._lastOtimResult;
   if (!res) return;
-  const { plans, loteId, minSobra, usedScraps } = res;
+  const { plans, loteId, usedScraps } = res;
 
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
@@ -260,7 +270,10 @@ async function _finalizarOtimizacao() {
   // Gerar novas sobras auto-endereçadas
   let sobrasGeradas = 0;
   plans.forEach(p => {
-    if (p.rem >= minSobra) {
+    const sObj = appState.skus.find(x => x.code === p.sku);
+    const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+
+    if (p.rem >= skuMin) {
       const id = `SC-${String(appState.nextSobraId++).padStart(3,'0')}`;
       sobrasGeradas++;
       
