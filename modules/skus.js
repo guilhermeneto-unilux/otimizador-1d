@@ -28,6 +28,9 @@ function renderSkus() {
             ${totalQty} barras
           </div>
         </td>
+        <td>
+          <div style="font-weight:600; color:var(--text-400);">${s.min_sobra !== undefined ? s.min_sobra : 1000} mm</div>
+        </td>
         <td style="text-align:right;">
           <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
             <button class="btn btn-white btn-sm" onclick="_editSkuModal('${s.id}')">Editar Estoque</button>
@@ -59,11 +62,12 @@ function renderSkus() {
             <th>Descrição do Perfil</th>
             <th>Dimensões & Lotes (mm)</th>
             <th>Total Virgem em Estoque</th>
+            <th>Sobra Mínima</th>
             <th style="text-align:right;">Ações</th>
           </tr>
         </thead>
         <tbody>
-          ${rows.length ? rows : '<tr><td colspan="5" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
+          ${rows.length ? rows : '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -90,7 +94,7 @@ function _getSkuFormHtml(sku = null) {
     </div>
     <div class="form-group">
       <label class="form-label">Sobra Mínima para Guarda (mm) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
-      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 50}">
+      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 1000}">
     </div>
 
     <div style="margin:24px 0 16px; border-bottom:1px solid var(--border);">
@@ -159,7 +163,7 @@ function _newSkuModal() {
 async function _salvarSku() {
   let code = document.getElementById('skCode').value.toUpperCase().trim();
   const desc = document.getElementById('skDesc').value.trim();
-  const minSobra = parseInt(document.getElementById('skMinSobra').value) || 50;
+  const minSobra = parseInt(document.getElementById('skMinSobra').value) || 1000;
   
   if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
   if (appState.skus.some(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
@@ -196,7 +200,7 @@ async function _saveEditSku(id) {
   const s = appState.skus.find(x => x.id === id);
   if (s) {
     s.desc = document.getElementById('skDesc').value.trim();
-    s.min_sobra = parseInt(document.getElementById('skMinSobra').value) || 50;
+    s.min_sobra = parseInt(document.getElementById('skMinSobra').value) || 1000;
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
     s.dims = dims;

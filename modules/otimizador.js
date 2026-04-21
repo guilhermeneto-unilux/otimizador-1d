@@ -3,7 +3,7 @@
 const SEG_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#f97316'];
 
 function renderOtimizador() {
-  const lotesDisp = appState.lotes.filter(l => l.status === 'pending');
+  const lotesDisp = appState.lotes.filter(l => l.status === 'pending' && l.ordens && l.ordens.length > 0);
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header" style="margin-bottom:24px;">
@@ -25,15 +25,7 @@ function renderOtimizador() {
               <option value="">— Escolha um lote —</option>
               ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s)</option>`).join('')}
             </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Lote Selecionado</label>
-            <select class="form-control" id="otimLote">
-              <option value="">— Escolha um lote —</option>
-              ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s)</option>`).join('')}
-            </select>
-            <div class="form-hint" style="margin-top:8px;">A estratégia é unificada: utilizar retalhos apenas se o desperdício for <b>≤ 20%</b>, visando otimização máxima das barras virgens. As sobras mínimas são configuradas por SKU.</div>
+            <div class="form-hint" style="margin-top:8px;">Estratégia unificada: retalhos com desperdício <b>≤ 20%</b>. Sobra mínima configurada por SKU.</div>
           </div>
         </div>
 

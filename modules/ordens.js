@@ -137,6 +137,7 @@ function _criarLote() {
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
   const id = `LT-${String(appState.nextLoteId++).padStart(3,'0')}`;
   const skus = [...new Set(sel.map(oid => appState.ordens.find(o => o.id === oid)?.sku).filter(Boolean))];
+  if (!skus.length) { showToast('Erro ao identificar SKUs!', 'error'); return; }
   const loteObj = { id, ordens: sel, skus, criacao: new Date().toISOString().split('T')[0], status: 'pending' };
   appState.lotes.push(loteObj);
   DB.saveLote(loteObj);

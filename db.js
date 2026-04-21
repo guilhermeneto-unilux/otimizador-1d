@@ -64,7 +64,7 @@ const DB = {
           }
         });
         
-        appState.lotes  = lotesReq.data || [];
+        appState.lotes  = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0);
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
