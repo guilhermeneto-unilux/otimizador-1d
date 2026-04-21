@@ -20,9 +20,10 @@ function renderOrdens() {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           CSV
         </button>
-        <button class="btn btn-white btn-sm" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/></svg>
-          Colar do Excel
+        <input type="file" id="opExcelFile" accept=".xlsx, .xls, .csv" style="display:none;" onchange="_handleExcelUpload(event)">
+        <button class="btn btn-white btn-sm" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;" onclick="document.getElementById('opExcelFile').click()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          Importar Planilha
         </button>
         <button class="btn btn-white btn-sm" onclick="_novaOrdemModal()">+ Nova Ordem</button>
         <button class="btn btn-green" onclick="_criarLote()">Criar Lote →</button>
@@ -141,4 +142,97 @@ function _criarLote() {
   });
   showToast(`Lote ${id} criado!`, 'success');
   navigate('otimizador');
+}
+
+/* =====================================================================
+   EXCEL IMPORT LOGIC
+   ===================================================================== */
+async function _handleExcelUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  showToast('Lendo arquivo, aguarde...', 'info');
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = window.XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      // sheet_to_json with header:1 returns an array of arrays
+      const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      let count = 0;
+      
+      // Itera a partir da linha index 1 assumindo que 0 tem cabeçalho
+      // Mas checa todas as linhas para ver se têm dados mínimos válidos
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r || !r.length) continue;
+
+        // Expectation:
+        // 0: MRP, 1: OP, 2: Qtd, 3: Nr Pedido, 4: Nr Ped Cli, 5: SKU, 6: Etiqueta, 7: Subclasse, 8: Entrega, 9: Obs, 10: Dim
+        const rawQty = parseInt(r[2], 10);
+        const rawSku = String(r[5] || '').trim();
+        const rawDim = parseFloat(String(r[10]).replace(',', '.'));
+
+        // Validação: só importa linhas que tiverem número em Largura e Quantidade, e algum Sku
+        if (isNaN(rawDim) || isNaN(rawQty) || rawDim <= 0 || rawQty <= 0 || !rawSku) {
+           continue; 
+        }
+
+        const opId = String(r[1] || '').trim();
+        const finalId = opId ? `OP-${opId}` : `OP-IMP-${appState.ordens.length + 1}`;
+        const clienteStr = String(r[4] || '').trim();
+        
+        let entrega = '';
+        if (r[8]) {
+          // Se o excel mandar como número serial, a lib do SheetJS às vezes extrai numero
+          if (typeof r[8] === 'number') {
+             entrega = new Date((r[8] - (25567 + 2)) * 86400 * 1000).toISOString().split('T')[0];
+          } else {
+             entrega = String(r[8]).split(' ')[0]; // Pega a parte da data
+          }
+        }
+
+        const novaOrdem = {
+          id: finalId,
+          sku: rawSku,
+          dim: rawDim,
+          qty: rawQty,
+          cliente: clienteStr || 'Planilha',
+          entrega: entrega || new Date().toISOString().split('T')[0],
+          status: 'pending',
+          lote: null,
+          _meta: {
+             mrp: r[0] || '',
+             op_original: r[1] || '',
+             pedido: r[3] || '',
+             etiqueta: r[6] || '',
+             subclasse: r[7] || '',
+             obs: r[9] || ''
+          }
+        };
+
+        appState.ordens.push(novaOrdem);
+        DB.saveOrdem(novaOrdem); // Salva assíncrono para o Supabase
+        count++;
+      }
+
+      showToast(`Importação concluída! ${count} OPs carregadas.`, 'success');
+      DB.log("Importou Planilha", "unilux_ordens", `${count} ordens importadas`);
+      
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao processar arquivo Excel. Verifique o formato.', 'error');
+    } finally {
+      // reseta o input
+      document.getElementById('opExcelFile').value = '';
+      renderOrdens(); 
+      updateBadges();
+    }
+  };
+  
+  reader.readAsArrayBuffer(file);
 }

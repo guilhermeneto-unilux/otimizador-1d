@@ -40,10 +40,21 @@ const DB = {
         }
 
         appState.skus   = skusReq.data || [];
-        // Ensure dims array exists
         appState.skus.forEach(s => { if (!s.dims) s.dims = []; });
         appState.sobras = sobrasReq.data || [];
         appState.ordens = ordensReq.data || [];
+        
+        // Decode metadata safely
+        appState.ordens.forEach(o => {
+          if (o.cliente && o.cliente.startsWith('{"_nome"')) {
+            try {
+              const parsed = JSON.parse(o.cliente);
+              o.cliente = parsed._nome;
+              o._meta = parsed.meta;
+            } catch(e) {}
+          }
+        });
+        
         appState.lotes  = lotesReq.data || [];
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
@@ -101,7 +112,12 @@ const DB = {
 
   async saveOrdem(o) {
     if (!supabaseClient) return;
-    const { error } = await supabaseClient.from('unilux_ordens').upsert(o);
+    const dbObj = { ...o };
+    if (dbObj._meta) {
+      dbObj.cliente = JSON.stringify({ _nome: dbObj.cliente, meta: dbObj._meta });
+      delete dbObj._meta;
+    }
+    const { error } = await supabaseClient.from('unilux_ordens').upsert(dbObj);
     if (error) console.error('Erro Ordens:', error);
   },
 

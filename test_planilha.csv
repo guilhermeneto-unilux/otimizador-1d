@@ -1,0 +1,3 @@
+MRP,OP,Qtd. OP,Nr. Pedido,Nr. Pedido Cliente,Código do item,Nome da etiqueta,subclasse,Data de entrega,Observação,Largura
+1234,OP-X,2,PED-1,CLI-PED,PC.000.086,LabelA,Sub1,2026-05-10,Nenhuma,1500
+5678,OP-Y,5,PED-2,CLI-PED2,PC.000.087,LabelB,Sub2,2026-05-12,,2400
