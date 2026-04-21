@@ -183,13 +183,19 @@ function _clickWmsSlot(endereco, isOccupied) {
           </select>
           <div class="form-hint">O cupados aparecem desabilitados. Selecione um espaço livre.</div>
         </div>
-        <div class="form-row">
-           <div class="form-group">
-             <label class="form-label">SKU</label>
-             <select class="form-control" id="soSku">
-                <option value="">-- selecione --</option>
-                ${appState.skus.map(sk => `<option value="${sk.code}">${sk.code} - ${sk.desc}</option>`).join('')}
-             </select>
+        <div clas           <div class="form-group">
+             <label class="form-label">SKU (Pesquise por código ou nome)</label>
+             <div style="position:relative;">
+               <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" 
+                      oninput="_filterSkuDropdown(this.value)" 
+                      onfocus="_showSkuDropdown(this)"
+                      onkeydown="_handleSkuKeydown(event, this)">
+               <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:220px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); text-align:left;">
+                 <div id="skuNoResults" style="padding:12px; color:var(--text-400); display:none; font-size:13px;">Nenhum item encontrado...</div>
+                 ${appState.skus.map(sk => `<div class="sku-option" style="padding:10px 12px; border-bottom:1px solid #f3f4f6; cursor:pointer;" onclick="_selectSku('${sk.code}', '${sk.desc.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><strong>${sk.code}</strong><br><span style="color:#6b7280; font-size:12px;">${sk.desc}</span></div>`).join('')}
+               </div>
+             </div>
+           </div>>
            </div>
            <div class="form-group">
              <label class="form-label">Medida (mm)</label>
@@ -199,7 +205,7 @@ function _clickWmsSlot(endereco, isOccupied) {
       `,
       `
         <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
-        <button class="btn btn-green" onclick="_salvarSobra()">Guardar no WMS</button>
+        <button class="btn btn-green" onclick="_salvarSobra(this)">Guardar no WMS</button>
       `
     );
     // Para fluxo manual via clique no '+', adicionamos o hidden input esperado pelo _salvarSobra
@@ -211,18 +217,43 @@ function _clickWmsSlot(endereco, isOccupied) {
   }
 }
 
-function _salvarSobra() {
-  const elSku = document.getElementById('soSku');
+function _salvarSobra(btnEl) {
+  if (btnEl) {
+    btnEl.dataset.originalText = btnEl.textContent;
+    btnEl.disabled = true;
+    btnEl.textContent = 'Aguarde...';
+  }
+
+  const elSkuInput = document.getElementById('soSkuInput');
   const elMed = document.getElementById('soMed');
   const elEnd = document.getElementById('soEndTarget');
   
-  if (!elSku || !elMed || !elEnd) return;
+  if (!elSkuInput || !elMed || !elEnd) {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
+    return;
+  }
 
-  const sku = elSku.value;
+  const skuVal = elSkuInput.value.trim();
+  const skuPart = skuVal.includes(' - ') ? skuVal.split(' - ')[0].trim() : skuVal;
   const med = parseInt(elMed.value);
   const endereco = elEnd.value;
   
-  if (!sku || !med || !endereco) { showToast('Informe SKU, Medida e Endereço!', 'error'); return; }
+  if (!skuVal || !med || !endereco) { 
+    showToast('Informe SKU, Medida e Endereço!', 'error'); 
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
+    return; 
+  }
+
+  // Busca o SKU oficial no appState.skus por código exato ou por match de "CODE - DESC"
+  const skuObj = appState.skus.find(s => s.code === skuPart || `${s.code} - ${s.desc}` === skuVal);
+
+  if (!skuObj) {
+    showToast('SKU não reconhecido. Selecione uma opção das sugestões.', 'error');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
+    return;
+  }
+
+  const sku = skuObj.code;
 
   // Verificação de segurança: já tem algo aqui?
   if (appState.sobras.some(s => s.endereco === endereco)) {
@@ -342,11 +373,17 @@ function _avancarCadastroSobra(quadId) {
 
       <div class="form-row">
          <div class="form-group">
-           <label class="form-label" style="font-weight:700;">Perfil da Sobra</label>
-           <select class="form-control" id="soSku" style="font-size:16px; padding:12px;">
-              <option value="">-- selecione o perfil --</option>
-              ${appState.skus.map(sk => `<option value="${sk.code}">${sk.code} - ${sk.desc}</option>`).join('')}
-           </select>
+           <label class="form-label" style="font-weight:700;">Perfil da Sobra (Pesquise)</label>
+           <div style="position:relative; text-align:left;">
+             <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" style="font-size:16px; padding:12px;" 
+                    oninput="_filterSkuDropdown(this.value)" 
+                    onfocus="_showSkuDropdown(this)"
+                    onkeydown="_handleSkuKeydown(event, this)">
+             <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:250px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
+               <div id="skuNoResults" style="padding:12px; color:var(--text-400); display:none; font-size:13px;">Nenhum item encontrado...</div>
+               ${appState.skus.map(sk => `<div class="sku-option" style="padding:12px; border-bottom:1px solid #f3f4f6; cursor:pointer;" onclick="_selectSku('${sk.code}', '${sk.desc.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><strong>${sk.code}</strong><br><span style="color:#6b7280; font-size:13px;">${sk.desc}</span></div>`).join('')}
+             </div>
+           </div>
          </div>
          <div class="form-group">
            <label class="form-label" style="font-weight:700;">Tamanho (mm)</label>
@@ -356,12 +393,12 @@ function _avancarCadastroSobra(quadId) {
     `,
     `
       <button class="btn btn-white" onclick="_openManualSobraModal()">← Voltar</button>
-      <button class="btn btn-green" onclick="_salvarSobra()">✓ Salvar Posição</button>
+      <button class="btn btn-green" onclick="_salvarSobra(this)">✓ Salvar Posição</button>
     `
   );
   
-  // Auto-focus no campo de SKU
-  setTimeout(() => document.getElementById('soSku').focus(), 100);
+  // Auto-focus no campo de pesquisa de SKU
+  setTimeout(() => document.getElementById('soSkuInput').focus(), 150);
 }
 
 function _getAllWmsSlots() {
@@ -420,3 +457,70 @@ function _imprimirQrCodes() {
   `);
   printWin.document.close();
 }
+
+/* ====== CUSTOM SKU DROPDOWN LOGIC ====== */
+function _filterSkuDropdown(val) {
+  const q = _normalizeStr(val);
+  const opts = document.querySelectorAll('#soSkuDropdown .sku-option');
+  let found = false;
+  
+  opts.forEach(opt => {
+    const txt = _normalizeStr(opt.textContent);
+    if(txt.includes(q)) {
+      opt.style.display = 'block';
+      found = true;
+    } else {
+      opt.style.display = 'none';
+    }
+  });
+
+  const noRes = document.getElementById('skuNoResults');
+  if(noRes) noRes.style.display = (found || q === '') ? 'none' : 'block';
+}
+
+function _normalizeStr(str) {
+  if (!str) return '';
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function _showSkuDropdown(inp) {
+  const dd = document.getElementById('soSkuDropdown');
+  if (dd) {
+    dd.style.display = 'block';
+    if (inp) _filterSkuDropdown(inp.value);
+  }
+}
+
+function _handleSkuKeydown(e, inp) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    // Tenta selecionar o primeiro item VISÍVEL
+    const firstVisible = document.querySelector('#soSkuDropdown .sku-option[style*="display: block"]');
+    if (firstVisible) {
+      firstVisible.click();
+      // Pula para o próximo campo (Medida)
+      setTimeout(() => {
+        const med = document.getElementById('soMed');
+        if (med) med.focus();
+      }, 50);
+    }
+  }
+}
+
+function _selectSku(code, desc) {
+  const inp = document.getElementById('soSkuInput');
+  if (inp) {
+    inp.value = `${code} - ${desc}`;
+    inp.blur();
+  }
+  const dd = document.getElementById('soSkuDropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+document.addEventListener('click', function(e) {
+  const dd = document.getElementById('soSkuDropdown');
+  const inp = document.getElementById('soSkuInput');
+  if(dd && inp && e.target !== inp && !dd.contains(e.target)) {
+    dd.style.display = 'none';
+  }
+});
