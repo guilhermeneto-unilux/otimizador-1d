@@ -42,11 +42,12 @@ const DB = {
         appState.skus   = skusReq.data || [];
         appState.skus.forEach(s => { 
           if (!s.dims) s.dims = []; 
+          s.min_sobra = 1000; // Default global
           if (s.desc && s.desc.startsWith('{"_desc"')) {
             try {
               const parsed = JSON.parse(s.desc);
               s.desc = parsed._desc;
-              s.min_sobra = parsed.min;
+              s.min_sobra = parsed.min !== undefined ? parsed.min : 1000;
             } catch(e) {}
           }
         });
@@ -121,7 +122,10 @@ const DB = {
       delete dbObj.min_sobra;
     }
     const { error } = await supabaseClient.from('unilux_skus').upsert(dbObj);
-    if (error) console.error('Erro SKUs:', error);
+    if (error) {
+      console.error('Erro SKUs:', error);
+      throw error;
+    }
   },
 
   async saveOrdem(o) {
@@ -132,31 +136,52 @@ const DB = {
       delete dbObj._meta;
     }
     const { error } = await supabaseClient.from('unilux_ordens').upsert(dbObj);
-    if (error) console.error('Erro Ordens:', error);
+    if (error) {
+      console.error('Erro Ordens:', error);
+      throw error;
+    }
   },
 
   async saveConfig(c) {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 1, data: c });
-    if (error) console.error('Erro Configs:', error);
+    if (error) {
+      console.error('Erro Configs:', error);
+      throw error;
+    }
   },
 
   async saveSobra(s) {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.from('unilux_sobras').upsert(s);
-    if (error) console.error('Erro Sobras:', error);
+    if (error) {
+      console.error('Erro Sobras:', error);
+      throw error;
+    }
   },
 
   async saveLote(l) {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.from('unilux_lotes').upsert(l);
-    if (error) console.error('Erro Lote:', error);
+    if (error) {
+      console.error('Erro Lote:', error);
+      throw error;
+    }
   },
 
   async saveHistorico(h) {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.from('unilux_historico').insert(h);
     if (error) console.error('Erro Histórico:', error);
+  },
+
+  async saveUser(u) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_users').upsert(u);
+    if (error) {
+      console.error('Erro Users:', error);
+      throw error;
+    }
   },
 
   // Delete methods
@@ -173,6 +198,15 @@ const DB = {
   async deleteSobra(id) {
     if (!supabaseClient) return;
     await supabaseClient.from('unilux_sobras').delete().eq('id', id);
+  },
+
+  async deleteUser(id) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_users').delete().eq('id', id);
+  },
+  async deleteLote(id) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_lotes').delete().eq('id', id);
   },
 
   async log(action, target_table, details = '') {

@@ -168,7 +168,12 @@ async function _reverterOrdem(id) {
     const lote = appState.lotes.find(l => l.id === o.lote);
     if (lote) {
       lote.ordens = lote.ordens.filter(oid => oid !== id);
-      DB.saveLote(lote);
+      if (lote.ordens.length === 0) {
+        appState.lotes = appState.lotes.filter(l => l.id !== o.lote);
+        await DB.deleteLote(o.lote);
+      } else {
+        DB.saveLote(lote);
+      }
     }
   }
 

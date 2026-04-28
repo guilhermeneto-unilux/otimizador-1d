@@ -25,7 +25,7 @@ function renderOtimizador() {
               <option value="">— Escolha um lote —</option>
               ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s)</option>`).join('')}
             </select>
-            <div class="form-hint" style="margin-top:8px;">Estratégia unificada: retalhos com desperdício <b>≤ 20%</b>. Sobra mínima configurada por SKU.</div>
+            <div class="form-hint" style="margin-top:8px;">Estratégia unificada: retalhos com desperdício <b>≤ 20%</b>. Sobra mínima de segurança: <b>1000mm</b> (ou conf. por SKU).</div>
           </div>
         </div>
 
@@ -91,7 +91,7 @@ function _calcOtimizacao() {
     const scraps= appState.sobras.filter(s => s.sku === sku).sort((a,b) => a.medida - b.medida);
 
     const sObj = appState.skus.find(x => x.code === sku);
-    const skuMinSobra = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+    const skuMinSobra = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
 
     pcs.forEach(pc => {
       // Tentar bin aberto
@@ -159,7 +159,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
   const totalLen   = plans.reduce((s,p) => s + p.len, 0);
   const totalWasteObj = plans.reduce((acc, p) => {
      const sObj = appState.skus.find(x => x.code === p.sku);
-     const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+     const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
 
      // A sobra real devolvida ao estoque
      const realSobra = p.rem;
@@ -209,7 +209,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
     <!-- Bar maps -->
     ${plans.map((p, idx) => {
       const sObj = appState.skus.find(x => x.code === p.sku);
-      const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+      const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
 
       const opColors = {};
       let ci = 0;
@@ -263,7 +263,7 @@ async function _finalizarOtimizacao() {
   let sobrasGeradas = 0;
   plans.forEach(p => {
     const sObj = appState.skus.find(x => x.code === p.sku);
-    const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 50;
+    const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
 
     if (p.rem >= skuMin) {
       const id = `SC-${String(appState.nextSobraId++).padStart(3,'0')}`;
