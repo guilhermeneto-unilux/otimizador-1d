@@ -80,7 +80,7 @@ function _planosFinalizadosRows(planos) {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar Excel
           </button>
-          <button class="btn btn-white btn-sm" onclick="showToast('Em breve: Ver Detalhes do Mapa', 'info')">Ver Mapa</button>
+          <button class="btn btn-white btn-sm" onclick="_verPlanoMapa('${p.id}')">Ver Mapa</button>
         </div>
       </td>
     </tr>`;
@@ -266,3 +266,50 @@ function _exportPlanoExcel(planoId) {
 
   showToast(`Excel exportado: Plano_${plano.loteId}_${plano.id}.xlsx`, 'success');
 }
+
+function _verPlanoMapa(planoId) {
+  const plano = appState.planos.find(p => p.id === planoId);
+  if (!plano) return;
+
+  const html = `
+    <div style="margin-bottom:20px; font-size:14px; color:var(--text-400);">
+      Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b>
+    </div>
+    <div id="modalMapaContent" style="display:flex; flex-direction:column; gap:16px; max-height:70vh; overflow-y:auto; padding-right:8px;">
+      ${plano.mapa.map((bin, idx) => _renderBarResult(bin, idx)).join('')}
+    </div>
+  `;
+
+  openModal(`Mapa do Plano: ${plano.id}`, html);
+}
+
+function _renderBarResult(bin, idx) {
+  const totalPcs = bin.pcs.reduce((sum, p) => sum + p.dim, 0);
+  const aprov = ((totalPcs/bin.len)*100).toFixed(1);
+
+  return `
+    <div class="res-item" style="padding:16px; border:1px solid var(--border); border-radius:12px; background:white;">
+      <div class="res-item-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${bin.len}mm</span></span>
+        <span class="status-badge badge-approved">${aprov}% usado</span>
+      </div>
+      <div class="bar-viz" style="height:48px; background:var(--bg-200); border-radius:6px; display:flex; position:relative; overflow:hidden; border:1px solid var(--border);">
+        ${bin.pcs.map(pc => {
+          const w = (pc.dim / bin.len) * 100;
+          const c = skuColor(pc.sku);
+          return `
+            <div class="bar-pc" style="width:${w}%; background:${c.bg}; color:${c.text}; height:100%; border-right:1px solid rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; position:relative;" title="${pc.op}: ${pc.dim}mm">
+              ${pc.dim}
+            </div>
+          `;
+        }).join('')}
+        ${bin.rem > 0 ? `<div style="flex:1; background:repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.03) 5px, rgba(0,0,0,0.03) 10px); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-400);">Sobra: ${bin.rem}mm</div>` : ''}
+      </div>
+      <div style="margin-top:8px; font-size:12px; color:var(--text-400); display:flex; gap:12px;">
+        <span>Material: <b>${bin.sku}</b></span>
+        <span>Peças: <b>${bin.pcs.length}</b></span>
+      </div>
+    </div>
+  `;
+}
+
