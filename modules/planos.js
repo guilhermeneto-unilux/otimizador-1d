@@ -146,10 +146,18 @@ function _exportPlanoExcel(planoId) {
   // Montar as linhas do Excel
   const rows = [];
 
+  // Linha 1: CABEÇALHOS (32 colunas conforme solicitado)
+  rows.push([
+    "PARTNUM", "SOUNUM", "SOULEN", "PARTLEN", "PLANID", "PLANCRDATE", "PLANNAME", "PLANDES1", "PLANDES2", "PLANDES3",
+    "MATID", "MATDES1", "LAYID", "SOUID", "SOUCOST", "SOUMNFDATE", "SOUSTORID", "SOUSTORDES1", "SOUDES1", "SOUDES2",
+    "SOUDES3", "PARTID", "PARTORDNUM", "PARTDES1", "PARTDES2", "PARTDES3", "SETTKERF", "SETTTRIMLEFT", "SETTTRIMRIGHT",
+    "MATDES2", "MATDES3", "MATDES4"
+  ]);
+
   skuOrder.forEach((sku, skuIdx) => {
     // Linha em branco entre SKUs (exceto antes do primeiro)
     if (skuIdx > 0) {
-      rows.push(Array(31).fill(''));
+      rows.push(Array(32).fill(''));
     }
 
     const bins = skuBins[sku];
@@ -207,8 +215,9 @@ function _exportPlanoExcel(planoId) {
           refile,            // AA: Refile
           refile,            // AB: Refile
           refile,            // AC: Refile
-          skuName,           // AD: Nome do SKU
-          skuName            // AE: Nome do SKU
+          skuName,           // AD: Nome do SKU (MATDES2)
+          skuName,           // AE: Nome do SKU (MATDES3)
+          skuName            // AF: Nome do SKU (MATDES4)
         ];
 
         rows.push(row);
@@ -248,7 +257,8 @@ function _exportPlanoExcel(planoId) {
     { wch: 8 },  // AB
     { wch: 8 },  // AC
     { wch: 30 }, // AD
-    { wch: 30 }  // AE
+    { wch: 30 }, // AE
+    { wch: 30 }  // AF
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Plano de Corte');
