@@ -23,14 +23,15 @@ const DB = {
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
-        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq] = await Promise.all([
+        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, planosReq] = await Promise.all([
           supabaseClient.from('unilux_skus').select('*'),
           supabaseClient.from('unilux_sobras').select('*'),
           supabaseClient.from('unilux_ordens').select('*'),
           supabaseClient.from('unilux_lotes').select('*'),
           supabaseClient.from('unilux_historico').select('*'),
           supabaseClient.from('unilux_configs').select('data').eq('id', 1).single(),
-          supabaseClient.from('unilux_users').select('*')
+          supabaseClient.from('unilux_users').select('*'),
+          supabaseClient.from('unilux_planos').select('*')
         ]);
 
         if (skusReq.error) {
@@ -68,6 +69,7 @@ const DB = {
         appState.lotes  = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0);
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
+        appState.planos = planosReq.data || [];
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
 
         // Atualiza os geradores de ID baseado no tamanho dos dados
@@ -180,6 +182,15 @@ const DB = {
     const { error } = await supabaseClient.from('unilux_users').upsert(u);
     if (error) {
       console.error('Erro Users:', error);
+      throw error;
+    }
+  },
+
+  async savePlano(p) {
+    if (!supabaseClient) return;
+    const { error } = await supabaseClient.from('unilux_planos').upsert(p);
+    if (error) {
+      console.error('Erro Planos:', error);
       throw error;
     }
   },

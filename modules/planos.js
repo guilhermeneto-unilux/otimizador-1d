@@ -1,57 +1,102 @@
 /* ===== PLANOS DE CORTE – UNILUX 1D ===== */
 
 function renderPlanos() {
-  const lotes = appState.lotes;
+  const lotesPend = appState.lotes.filter(l => l.status === 'pending');
+  const planos = appState.planos || [];
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header" style="margin-bottom:24px;">
       <div>
-        <div class="pg-eyebrow">${lotes.filter(l=>l.status==='pending').length} aberto(s) · ${lotes.filter(l=>l.status==='approved').length} concluído(s)</div>
+        <div class="pg-eyebrow">${planos.length} plano(s) concluído(s) · ${lotesPend.length} lote(s) aguardando</div>
         <h1 class="pg-title">Planos de Corte</h1>
       </div>
     </div>
 
-    <div class="tbl-wrap">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th>Lote</th>
-            <th>Ordens</th>
-            <th>SKUs</th>
-            <th>Data</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${_planosRows(lotes)}
-        </tbody>
-      </table>
+    <!-- ABAS OU SEÇÕES -->
+    <div style="display:flex; flex-direction:column; gap:32px;">
+      
+      <!-- SEÇÃO 1: Planos Finalizados -->
+      <div>
+        <h2 style="font-size:16px; font-weight:700; margin-bottom:12px; color:var(--text-900);">Planos Finalizados</h2>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>ID Plano</th>
+                <th>Lote Origem</th>
+                <th>Aproveitamento</th>
+                <th>Barras</th>
+                <th>Data Finalização</th>
+                <th>Status</th>
+                <th style="text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${planos.length ? _planosFinalizadosRows(planos) : '<tr><td colspan="7" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SEÇÃO 2: Lotes Pendentes -->
+      <div>
+        <h2 style="font-size:16px; font-weight:700; margin-bottom:12px; color:var(--text-400);">Lotes em Aguardo</h2>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Lote</th>
+                <th>Ordens</th>
+                <th>SKUs</th>
+                <th>Data Criação</th>
+                <th style="text-align:right;">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lotesPend.length ? _lotesPendentesRows(lotesPend) : '<tr><td colspan="5" class="tbl-empty">Nenhum lote pendente.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   `;
 }
 
-function _planosRows(lotes) {
-  if (!lotes.length) {
-    return `<tr><td colspan="6" class="tbl-empty">Nenhum lote criado ainda. <button class="btn btn-dark btn-sm" style="margin-top:12px;" onclick="navigate('ordens')">Criar Lote →</button></td></tr>`;
-  }
+function _planosFinalizadosRows(planos) {
+  return planos.sort((a,b) => new Date(b.data) - new Date(a.data)).map(p => {
+    const barras = p.mapa ? p.mapa.length : 0;
+    return `
+    <tr>
+      <td class="fw-700">${p.id}</td>
+      <td style="color:var(--text-400);">${p.loteId}</td>
+      <td><span class="status-badge badge-approved">${p.aproveitamento}</span></td>
+      <td>${barras} barra(s)</td>
+      <td style="color:var(--text-400);">${new Date(p.data).toLocaleString('pt-BR')}</td>
+      <td><span class="status-badge badge-approved">✓ Concluído</span></td>
+      <td style="text-align:right;">
+        <div style="display:flex; gap:6px; justify-content:flex-end;">
+          <button class="btn btn-white btn-sm" style="background:#f0fdf4; border-color:#bbf7d0; color:#16a34a;" onclick="_exportPlanoExcel('${p.id}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar Excel
+          </button>
+          <button class="btn btn-white btn-sm" onclick="showToast('Em breve: Ver Detalhes do Mapa', 'info')">Ver Mapa</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function _lotesPendentesRows(lotes) {
   return lotes.map(l => {
-    const isApproved = l.status === 'approved';
     return `
     <tr>
       <td class="fw-700">${l.id}</td>
       <td style="color:var(--text-400);">${(l.ordens || []).length} ordens</td>
       <td>${(l.skus || []).map(s => { const c = skuColor(s); return `<span class="sku-tag" style="background:${c.bg};color:${c.text};margin-right:4px;">${s}</span>`; }).join('')}</td>
       <td style="color:var(--text-400);">${l.criacao || '—'}</td>
-      <td>
-        <span class="status-badge ${isApproved ? 'badge-approved' : 'badge-pending'}">
-          ${isApproved ? 'Aprovado' : 'Aberto'}
-        </span>
-      </td>
       <td style="text-align:right;">
-        ${isApproved
-          ? `<button class="btn btn-ghost btn-sm" disabled style="color:var(--text-400)">Concluído</button>`
-          : `<button class="btn btn-dark btn-sm" onclick="_abrirLoteNoOtimizador('${l.id}')">Ver Plano →</button>`}
+        <button class="btn btn-dark btn-sm" onclick="_abrirLoteNoOtimizador('${l.id}')">Otimizar Agora →</button>
       </td>
     </tr>`;
   }).join('');
@@ -59,9 +104,155 @@ function _planosRows(lotes) {
 
 function _abrirLoteNoOtimizador(loteId) {
   navigate('otimizador');
-  // Pre-select the lote after render
   setTimeout(() => {
     const sel = document.getElementById('otimLoteSelect');
     if (sel) sel.value = loteId;
   }, 100);
+}
+
+/* ============================================================
+   EXCEL EXPORT — Plano de Corte (.xlsx)
+   ============================================================
+   Layout de 31 colunas (A → AE) conforme especificação:
+   A: Nº linha por SKU | B: Nº barra por SKU | C: Tamanho barra
+   D: Dimensão corte   | E: Plan ID global    | F: Data/hora
+   G-I: z              | J: Nome SKU           | K: z
+   L: Código SKU       | M-Y: z                | Z: Data entrega
+   AA-AC: Refile       | AD-AE: Nome SKU
+   ============================================================ */
+function _exportPlanoExcel(planoId) {
+  const plano = appState.planos.find(p => p.id === planoId);
+  if (!plano || !plano.mapa) {
+    showToast('Plano não encontrado!', 'error');
+    return;
+  }
+
+  const mapa = plano.mapa;
+  const refile = plano.trim_mm || (appState.configs ? (appState.configs.trim_mm || 0) : 0);
+  const dataHora = new Date(plano.data).toLocaleString('pt-BR');
+  const skuPlanIds = plano.skuPlanIds || {};
+
+  // Agrupar bins por SKU preservando a ordem
+  const skuOrder = [];
+  const skuBins = {};
+  mapa.forEach(bin => {
+    if (!skuBins[bin.sku]) {
+      skuBins[bin.sku] = [];
+      skuOrder.push(bin.sku);
+    }
+    skuBins[bin.sku].push(bin);
+  });
+
+  // Montar as linhas do Excel
+  const rows = [];
+
+  skuOrder.forEach((sku, skuIdx) => {
+    // Linha em branco entre SKUs (exceto antes do primeiro)
+    if (skuIdx > 0) {
+      rows.push(Array(31).fill(''));
+    }
+
+    const bins = skuBins[sku];
+    const sObj = appState.skus.find(s => s.code === sku);
+    const skuName = sObj ? sObj.desc : sku;
+    const planId = skuPlanIds[sku] || '?';
+
+    let lineNum = 0; // Nº linha por SKU (col A)
+
+    bins.forEach((bin, barIdx) => {
+      const barNum = barIdx + 1; // Nº barra por SKU (col B)
+
+      bin.pcs.forEach(pc => {
+        lineNum++;
+
+        // Buscar data de entrega da OP original
+        let entrega = pc.entrega || '';
+        if (!entrega) {
+          const op = appState.ordens.find(o => o.id === pc.op);
+          if (op) entrega = op.entrega || '';
+        }
+        // Formatar data de entrega
+        if (entrega && entrega.includes('-')) {
+          const [y,m,d] = entrega.split('-');
+          entrega = `${d}/${m}/${y}`;
+        }
+
+        const row = [
+          lineNum,           // A: Nº linha por SKU
+          barNum,            // B: Nº barra por SKU
+          bin.len,           // C: Tamanho da barra
+          pc.dim,            // D: Dimensão do corte
+          planId,            // E: Plan ID global por SKU
+          dataHora,          // F: Data/hora otimização
+          'z',               // G
+          'z',               // H
+          'z',               // I
+          skuName,           // J: Nome do SKU
+          'z',               // K
+          sku,               // L: Código do SKU
+          'z',               // M
+          'z',               // N
+          'z',               // O
+          'z',               // P
+          'z',               // Q
+          'z',               // R
+          'z',               // S
+          'z',               // T
+          'z',               // U
+          'z',               // V
+          'z',               // W
+          'z',               // X
+          'z',               // Y
+          entrega,           // Z: Data de entrega
+          refile,            // AA: Refile
+          refile,            // AB: Refile
+          refile,            // AC: Refile
+          skuName,           // AD: Nome do SKU
+          skuName            // AE: Nome do SKU
+        ];
+
+        rows.push(row);
+      });
+    });
+  });
+
+  // Gerar o arquivo .xlsx usando SheetJS
+  if (!window.XLSX) {
+    showToast('Biblioteca XLSX não carregada!', 'error');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Ajustar largura das colunas
+  ws['!cols'] = [
+    { wch: 6 },  // A
+    { wch: 6 },  // B
+    { wch: 10 }, // C
+    { wch: 10 }, // D
+    { wch: 8 },  // E
+    { wch: 20 }, // F
+    { wch: 4 },  // G
+    { wch: 4 },  // H
+    { wch: 4 },  // I
+    { wch: 30 }, // J
+    { wch: 4 },  // K
+    { wch: 15 }, // L
+    { wch: 4 },  // M-Y (small)
+    { wch: 4 }, { wch: 4 }, { wch: 4 }, { wch: 4 },
+    { wch: 4 }, { wch: 4 }, { wch: 4 }, { wch: 4 },
+    { wch: 4 }, { wch: 4 }, { wch: 4 }, { wch: 4 },
+    { wch: 12 }, // Z
+    { wch: 8 },  // AA
+    { wch: 8 },  // AB
+    { wch: 8 },  // AC
+    { wch: 30 }, // AD
+    { wch: 30 }  // AE
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Plano de Corte');
+  XLSX.writeFile(wb, `Plano_${plano.loteId}_${plano.id}.xlsx`);
+
+  showToast(`Excel exportado: Plano_${plano.loteId}_${plano.id}.xlsx`, 'success');
 }

@@ -3,7 +3,7 @@
 function renderOrdens() {
   const tab      = appState._ordensTab || 'pending';
   const pending  = appState.ordens.filter(o => o.status === 'pending');
-  const inBatch  = appState.ordens.filter(o => o.status === 'in_batch' || o.status === 'done');
+  const inBatch  = appState.ordens.filter(o => o.status === 'in_batch');
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
@@ -153,11 +153,21 @@ function _criarLote() {
 }
 
 async function _deleteOrdem(id) {
-  appState.ordens = appState.ordens.filter(o => o.id !== id);
-  await DB.deleteOrdem(id);
-  await DB.log("Removeu Ordem", "unilux_ordens", id);
-  renderOrdens(); updateBadges();
-  showToast(`Ordem ${id} removida!`, 'info');
+  try {
+    // UI Otimista: remove da memória e atualiza tela na hora
+    appState.ordens = appState.ordens.filter(o => o.id !== id);
+    renderOrdens(); 
+    updateBadges();
+
+    // Sincroniza com DB (Background)
+    await DB.deleteOrdem(id);
+    await DB.log("Removeu Ordem", "unilux_ordens", id);
+    
+    showToast(`Ordem ${id} removida!`, 'info');
+  } catch (err) {
+    console.error('Erro ao deletar ordem:', err);
+    showToast(`Erro ao remover ${id} do banco de dados, mas removida da sessão.`, 'error');
+  }
 }
 
 async function _reverterOrdem(id) {
