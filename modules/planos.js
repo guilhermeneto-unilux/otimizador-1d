@@ -272,11 +272,27 @@ function _verPlanoMapa(planoId) {
   const plano = appState.planos.find(p => p.id === planoId);
   if (!plano) return;
 
+  // Agrupar por SKU para contagem de barras
+  const skuCounts = {};
+  plano.mapa.forEach(bin => {
+    skuCounts[bin.sku] = (skuCounts[bin.sku] || 0) + 1;
+  });
+
+  const summaryHtml = Object.entries(skuCounts).map(([sku, count]) => {
+    const sObj = appState.skus.find(s => s.code === sku);
+    const name = sObj ? (sObj.short_desc || sObj.desc) : sku;
+    return `<div style="font-size:13px; margin-bottom:4px;">• ${sku} (${name}): <b>${count} barras</b></div>`;
+  }).join('');
+
   const html = `
+    <div style="margin-bottom:16px; padding:12px; background:var(--bg-100); border-radius:8px; border:1px solid var(--border);">
+      <div style="font-weight:700; font-size:12px; color:var(--text-400); text-transform:uppercase; margin-bottom:8px;">Resumo de Material (Abastecimento)</div>
+      ${summaryHtml}
+    </div>
     <div style="margin-bottom:20px; font-size:14px; color:var(--text-400);">
       Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b>
     </div>
-    <div id="modalMapaContent" style="display:flex; flex-direction:column; gap:16px; max-height:70vh; overflow-y:auto; padding-right:8px;">
+    <div id="modalMapaContent" style="display:flex; flex-direction:column; gap:16px; max-height:60vh; overflow-y:auto; padding-right:8px;">
       ${plano.mapa.map((bin, idx) => _renderBarResult(bin, idx)).join('')}
     </div>
   `;

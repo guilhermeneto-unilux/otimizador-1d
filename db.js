@@ -43,12 +43,16 @@ const DB = {
         appState.skus   = skusReq.data || [];
         appState.skus.forEach(s => { 
           if (!s.dims) s.dims = []; 
-          s.min_sobra = 1000; // Default global
+          // Se min_sobra estiver nulo no banco, default 1000
+          if (s.min_sobra === undefined || s.min_sobra === null) s.min_sobra = 1000;
+          
+          // Compatibilidade Legada: se a descrição ainda estiver em formato JSON (antigo)
           if (s.desc && s.desc.startsWith('{"_desc"')) {
             try {
               const parsed = JSON.parse(s.desc);
               s.desc = parsed._desc;
-              s.min_sobra = parsed.min !== undefined ? parsed.min : 1000;
+              // Só sobrescreve se a nova coluna estiver vazia ou se o JSON for mais recente (heurística simples)
+              if (s.min_sobra === 1000 && parsed.min !== undefined) s.min_sobra = parsed.min;
             } catch(e) {}
           }
         });
@@ -118,11 +122,15 @@ const DB = {
 
   async saveSku(s) {
     if (!supabaseClient) return;
-    const dbObj = { ...s };
-    if (dbObj.min_sobra !== undefined) {
-      dbObj.desc = JSON.stringify({ _desc: dbObj.desc, min: dbObj.min_sobra });
-      delete dbObj.min_sobra;
-    }
+    const dbObj = { 
+      id: s.id, 
+      code: s.code, 
+      desc: s.desc, 
+      dims: s.dims, 
+      min_sobra: s.min_sobra,
+      short_desc: s.short_desc || '',
+      folder: s.folder || ''
+    };
     const { error } = await supabaseClient.from('unilux_skus').upsert(dbObj);
     if (error) {
       console.error('Erro SKUs:', error);

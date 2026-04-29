@@ -22,6 +22,7 @@ function renderSkus() {
           </span>
         </td>
         <td><div style="font-weight:500;">${s.desc}</div></td>
+        <td><div style="color:var(--text-400); font-size:13px;">${s.short_desc || '-'}</div></td>
         <td><div style="display:flex; gap:4px; flex-wrap:wrap;">${dimsText}</div></td>
         <td>
           <div style="font-weight:700; color:${totalQty > 0 ? 'var(--text)' : 'var(--red)'};">
@@ -60,6 +61,7 @@ function renderSkus() {
           <tr>
             <th>Código SKU</th>
             <th>Descrição do Perfil</th>
+            <th>Nome Resumido</th>
             <th>Dimensões & Lotes (mm)</th>
             <th>Total Virgem em Estoque</th>
             <th>Sobra Mínima</th>
