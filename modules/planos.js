@@ -163,6 +163,7 @@ function _exportPlanoExcel(planoId) {
     const bins = skuBins[sku];
     const sObj = appState.skus.find(s => s.code === sku);
     const skuName = sObj ? sObj.desc : sku;
+    const skuShortName = sObj ? (sObj.short_desc || sObj.desc) : sku;
     const planId = skuPlanIds[sku] || '?';
 
     let lineNum = 0; // Nº linha por SKU (col A)
@@ -195,7 +196,7 @@ function _exportPlanoExcel(planoId) {
           'z',               // G
           'z',               // H
           'z',               // I
-          skuName,           // J: Nome do SKU
+          skuShortName,      // J: Nome do SKU Resumido
           'z',               // K
           sku,               // L: Código do SKU
           'z',               // M
@@ -215,7 +216,7 @@ function _exportPlanoExcel(planoId) {
           refile,            // AA: Refile
           refile,            // AB: Refile
           refile,            // AC: Refile
-          skuName,           // AD: Nome do SKU (MATDES2)
+          skuShortName,      // AD: Nome do SKU Resumido (MATDES2)
           skuName,           // AE: Nome do SKU (MATDES3)
           skuName            // AF: Nome do SKU (MATDES4)
         ];

@@ -93,6 +93,14 @@ function _getSkuFormHtml(sku = null) {
       <input type="text" class="form-control" id="skDesc" value="${desc}">
     </div>
     <div class="form-group">
+      <label class="form-label">Nome Resumido do Perfil</label>
+      <input type="text" class="form-control" id="skShortDesc" value="${sku && sku.short_desc ? sku.short_desc : ''}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Pasta</label>
+      <input type="text" class="form-control" id="skFolder" value="${sku && sku.folder ? sku.folder : ''}">
+    </div>
+    <div class="form-group">
       <label class="form-label">Sobra Mínima para Guarda (mm) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
       <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 1000}">
     </div>
@@ -163,6 +171,8 @@ function _newSkuModal() {
 async function _salvarSku() {
   let code = document.getElementById('skCode').value.toUpperCase().trim();
   const desc = document.getElementById('skDesc').value.trim();
+  const short_desc = document.getElementById('skShortDesc').value.trim();
+  const folder = document.getElementById('skFolder').value.trim();
   const minSobra = parseInt(document.getElementById('skMinSobra').value) || 1000;
   
   if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
@@ -172,7 +182,7 @@ async function _salvarSku() {
   if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento válido!', 'error'); return; }
 
   const id = `S${String(appState.skus.length + 1).padStart(2,'0')}`;
-  const s = { id, code, desc, dims, min_sobra: minSobra };
+  const s = { id, code, desc, short_desc, folder, dims, min_sobra: minSobra };
   
   appState.skus.push(s);
   await DB.saveSku(s);
@@ -200,6 +210,8 @@ async function _saveEditSku(id) {
   const s = appState.skus.find(x => x.id === id);
   if (s) {
     s.desc = document.getElementById('skDesc').value.trim();
+    s.short_desc = document.getElementById('skShortDesc').value.trim();
+    s.folder = document.getElementById('skFolder').value.trim();
     s.min_sobra = parseInt(document.getElementById('skMinSobra').value) || 1000;
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
