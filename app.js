@@ -114,6 +114,14 @@ function showToast(msg, type = 'success') {
 // ─── INIT ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await DB.init(APP_MOCK);
+  
+  // One-time session invalidation: force everyone to log in fresh
+  const APP_VERSION = '2.14';
+  if (localStorage.getItem('unilux_app_version') !== APP_VERSION) {
+    localStorage.removeItem('unilux_session');
+    localStorage.setItem('unilux_app_version', APP_VERSION);
+  }
+  
   initAuth();
 
   document.querySelectorAll('.nav-item[data-route]').forEach(el => {
