@@ -85,7 +85,7 @@ async function _saveNewUser() {
       return; 
     }
 
-    const id = `U${Date.now().toString().slice(-6)}`;
+    const id = crypto.randomUUID();
     const newUser = { id, name, email, password, role };
     await DB.saveUser(newUser);
     await DB.log("Criou usuário", "unilux_users", `${name} (${role})`);

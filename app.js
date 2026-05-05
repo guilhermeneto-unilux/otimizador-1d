@@ -132,8 +132,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initAuth() {
   const saved = localStorage.getItem('unilux_session');
   if (saved) {
-    appState.currentUser = JSON.parse(saved);
-    if (appState.currentUser.role === 'admin') document.body.classList.add('is-admin');
+    try {
+      const parsed = JSON.parse(saved);
+      // Validate session against loaded users from DB
+      const validUser = appState.users.find(u => u.id === parsed.id && u.email === parsed.email);
+      if (validUser) {
+        appState.currentUser = validUser;
+        if (validUser.role === 'admin') document.body.classList.add('is-admin');
+      } else {
+        // Stale session — clear it
+        localStorage.removeItem('unilux_session');
+        appState.currentUser = null;
+      }
+    } catch(e) {
+      localStorage.removeItem('unilux_session');
+      appState.currentUser = null;
+    }
   }
   _updateLoginUI();
 }
