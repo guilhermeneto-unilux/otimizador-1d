@@ -135,7 +135,10 @@ function _salvarOrdem() {
 function _criarLote() {
   const sel = [...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id);
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
-  const id = `LT-${String(appState.nextLoteId++).padStart(3,'0')}`;
+  const id = `LT-${String(appState.configs.nextLoteId).padStart(3,'0')}`;
+  appState.configs.nextLoteId++;
+  DB.saveConfig(appState.configs);
+
   const skus = [...new Set(sel.map(oid => appState.ordens.find(o => o.id === oid)?.sku).filter(Boolean))];
   if (!skus.length) { showToast('Erro ao identificar SKUs!', 'error'); return; }
   const loteObj = { id, ordens: sel, skus, criacao: new Date().toISOString().split('T')[0], status: 'pending' };

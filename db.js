@@ -81,10 +81,11 @@ const DB = {
           return p;
         });
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
-
-        // Atualiza os geradores de ID baseado no tamanho dos dados
-        appState.nextLoteId = appState.lotes.length + 1;
-        appState.nextSobraId = appState.sobras.length + 1;
+        
+        // Ensure counters exist in configs
+        if (!appState.configs) appState.configs = {};
+        if (!appState.configs.nextLoteId)  appState.configs.nextLoteId = 1;
+        if (!appState.configs.nextSobraId) appState.configs.nextSobraId = 1;
 
         this._updateStatusUI('Database Ativo');
 
