@@ -146,15 +146,17 @@ function _updateLoginUI() {
         <div class="logo-box" style="margin: 0 auto 16px; width:48px; height:48px; font-size:24px;">U</div>
         <h2 style="margin-bottom:8px;">Bem-vindo</h2>
         <p style="color:var(--text-400); font-size:13px; margin-bottom:24px;">Acesse o Otimizador Unilux</p>
-        <div class="form-group" style="text-align:left;">
-          <label class="form-label">Email</label>
-          <input type="email" id="lEmail" class="form-control" placeholder="admin@unilux.com.br">
-        </div>
-        <div class="form-group" style="text-align:left;">
-          <label class="form-label">Senha</label>
-          <input type="password" id="lPass" class="form-control" placeholder="••••••">
-        </div>
-        <button class="btn btn-dark" style="width:100%; justify-content:center; padding:12px;" onclick="doLogin()">Entrar no Sistema</button>
+        <form onsubmit="doLogin(); return false;" autocomplete="on">
+          <div class="form-group" style="text-align:left;">
+            <label class="form-label">Email</label>
+            <input type="email" id="lEmail" class="form-control" placeholder="seu.email@empresa.com" autocomplete="username" required maxlength="120">
+          </div>
+          <div class="form-group" style="text-align:left;">
+            <label class="form-label">Senha</label>
+            <input type="password" id="lPass" class="form-control" placeholder="••••••" autocomplete="current-password" required maxlength="128">
+          </div>
+          <button type="submit" class="btn btn-dark" style="width:100%; justify-content:center; padding:12px;">Entrar no Sistema</button>
+        </form>
       </div>
     `;
     overlay.classList.add('active');
@@ -178,7 +180,7 @@ function _updateLoginUI() {
 }
 
 async function doLogin() {
-  const email = document.getElementById('lEmail').value;
+  const email = document.getElementById('lEmail').value.trim();
   const pass = document.getElementById('lPass').value;
   
   const user = appState.users.find(u => u.email === email && u.password === pass);
@@ -189,7 +191,7 @@ async function doLogin() {
     _updateLoginUI();
     showToast(`Bem-vindo, ${user.name}!`, 'success');
   } else {
-    showToast('Credenciais inválidas ou Usuário não cadastrado!', 'error');
+    showToast('Credenciais inválidas.', 'error');
   }
 }
 

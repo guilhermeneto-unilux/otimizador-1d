@@ -73,14 +73,17 @@ const DB = {
         appState.lotes  = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0);
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
-        appState.planos = planosReq.data || [];
+        appState.planos = (planosReq.data || []).map(p => {
+          if (typeof p.mapa === 'string') { try { p.mapa = JSON.parse(p.mapa); } catch(e) {} }
+          if (typeof p.skuPlanIds === 'string') { try { p.skuPlanIds = JSON.parse(p.skuPlanIds); } catch(e) {} }
+          return p;
+        });
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
 
         // Atualiza os geradores de ID baseado no tamanho dos dados
         appState.nextLoteId = appState.lotes.length + 1;
         appState.nextSobraId = appState.sobras.length + 1;
 
-        console.log('✅ Sistema sincronizado com a nuvem estruturada!');
         this._updateStatusUI('Database Ativo');
 
       } catch (err) {

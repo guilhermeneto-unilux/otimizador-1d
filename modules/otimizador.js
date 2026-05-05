@@ -560,7 +560,7 @@ async function _finalizarOtimizacao() {
 
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
-    lote.status = 'approved';
+    lote.status = 'done';
     DB.saveLote(lote);
     lote.ordens.forEach(id => { const o = appState.ordens.find(x => x.id === id); if (o) { o.status = 'done'; DB.saveOrdem(o); } });
   }
@@ -649,11 +649,18 @@ async function _finalizarOtimizacao() {
   window._lastOtimResult = null;
 
   const btn = document.getElementById('btnFinalizar');
-  if (btn) { btn.disabled = true; btn.textContent = '✓ Aprovado'; }
-  await DB.savePlano(planoFinal);
+  if (btn) { btn.disabled = true; btn.textContent = '\u2713 Aprovado'; }
+  
+  // Serialize complex objects for Supabase storage
+  const planoParaSalvar = {
+    ...planoFinal,
+    mapa: JSON.stringify(planoFinal.mapa),
+    skuPlanIds: JSON.stringify(planoFinal.skuPlanIds)
+  };
+  await DB.savePlano(planoParaSalvar);
   await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras)`);
   
-  showToast(`Plano ${loteId} finalizado e Histórico salvo em Nuvem!`, 'success');
+  showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');
   updateBadges();
   setTimeout(() => navigate('planos'), 1200);
 }

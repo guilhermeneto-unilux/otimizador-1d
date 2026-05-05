@@ -74,7 +74,6 @@ function _novoUsuarioModal() {
 }
 
 async function _saveNewUser() {
-  console.log('[DEBUG] Tentando criar novo usuário...');
   try {
     const name = document.getElementById('uName').value;
     const email = document.getElementById('uEmail').value;
@@ -86,24 +85,21 @@ async function _saveNewUser() {
       return; 
     }
 
-    const id = self.crypto.randomUUID();
+    const id = `U${Date.now().toString().slice(-6)}`;
     const newUser = { id, name, email, password, role };
-    
-    console.log('[DEBUG] Enviando para DB:', newUser);
     await DB.saveUser(newUser);
     await DB.log("Criou usuário", "unilux_users", `${name} (${role})`);
     
     showToast("Usuário criado com sucesso!", "success");
     closeModal();
     
-    // Atualiza localmente antes do refresh total para agilidade
     if (!appState.users) appState.users = [];
     appState.users.push(newUser);
     
+    await DB.init(); 
     renderUsuarios();
   } catch (err) {
-    console.error('[CRITICAL] Erro em _saveNewUser:', err);
-    showToast("Erro ao criar usuário. Veja o console.", "error");
+    showToast("Erro ao criar usuário. Tente novamente.", "error");
   }
 }
 
@@ -138,7 +134,6 @@ function _editUserModal(id) {
 }
 
 async function _saveEditedUser(id) {
-  console.log('[DEBUG] Salvando edição de usuário:', id);
   try {
     const u = appState.users.find(x => x.id === id);
     if (!u) return;
@@ -162,8 +157,7 @@ async function _saveEditedUser(id) {
     closeModal();
     renderUsuarios();
   } catch (err) {
-    console.error('[CRITICAL] Erro em _saveEditedUser:', err);
-    showToast("Erro ao atualizar. Veja o console.", "error");
+    showToast("Erro ao atualizar. Tente novamente.", "error");
   }
 }
 
