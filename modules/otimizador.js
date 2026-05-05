@@ -653,13 +653,8 @@ async function _finalizarOtimizacao() {
   const btn = document.getElementById('btnFinalizar');
   if (btn) { btn.disabled = true; btn.textContent = '\u2713 Aprovado'; }
   
-  // Serialize complex objects for Supabase storage
-  const planoParaSalvar = {
-    ...planoFinal,
-    mapa: JSON.stringify(planoFinal.mapa),
-    skuPlanIds: JSON.stringify(planoFinal.skuPlanIds)
-  };
-  await DB.savePlano(planoParaSalvar);
+  // Save all plans to unilux_configs row id=2 (no separate table needed)
+  await DB.savePlanosAll();
   await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras)`);
   
   showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');

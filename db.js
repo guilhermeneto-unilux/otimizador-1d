@@ -23,7 +23,7 @@ const DB = {
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
-        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, planosReq] = await Promise.all([
+        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, cfgPlanosReq] = await Promise.all([
           supabaseClient.from('unilux_skus').select('*'),
           supabaseClient.from('unilux_sobras').select('*'),
           supabaseClient.from('unilux_ordens').select('*'),
@@ -31,7 +31,7 @@ const DB = {
           supabaseClient.from('unilux_historico').select('*'),
           supabaseClient.from('unilux_configs').select('data').eq('id', 1).single(),
           supabaseClient.from('unilux_users').select('*'),
-          supabaseClient.from('unilux_planos').select('*')
+          supabaseClient.from('unilux_configs').select('data').eq('id', 2).single()
         ]);
 
         if (skusReq.error) {
@@ -73,7 +73,9 @@ const DB = {
         appState.lotes = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0 && l.status === 'pending');
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
-        appState.planos = (planosReq.data || []).map(p => {
+        // Plans are stored in unilux_configs row id=2 as a JSON blob
+        const rawPlanos = cfgPlanosReq.data?.data?.planos || [];
+        appState.planos = rawPlanos.map(p => {
           if (typeof p.mapa === 'string') { try { p.mapa = JSON.parse(p.mapa); } catch(e) {} }
           if (typeof p.skuPlanIds === 'string') { try { p.skuPlanIds = JSON.parse(p.skuPlanIds); } catch(e) {} }
           return p;
@@ -197,11 +199,12 @@ const DB = {
     }
   },
 
-  async savePlano(p) {
+  async savePlanosAll() {
     if (!supabaseClient) return;
-    const { error } = await supabaseClient.from('unilux_planos').upsert(p);
+    // Plans are stored as a JSON blob in unilux_configs row id=2 (no separate table needed)
+    const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 2, data: { planos: appState.planos } });
     if (error) {
-      console.error('Erro Planos:', error);
+      console.error('Erro ao salvar planos:', error);
       throw error;
     }
   },
