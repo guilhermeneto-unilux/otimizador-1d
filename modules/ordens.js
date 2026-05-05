@@ -33,6 +33,12 @@ function renderOrdens() {
     <div class="tabs">
       <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length})</span>
       <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length})</span>
+      ${tab === 'batch' && inBatch.length > 0 
+        ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--red); border:1px solid #fee2e2; font-weight:700;" onclick="_reverterTodasOrdens()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Reverter Tudo para Pendente
+           </button>` 
+        : ''}
     </div>
 
     <div class="tbl-wrap">
@@ -197,6 +203,36 @@ async function _reverterOrdem(id) {
   await DB.log("Reverteu Ordem", "unilux_ordens", `${id} voltou para Pendente`);
   renderOrdens(); updateBadges();
   showToast(`Ordem ${id} voltou para status pendente!`, 'success');
+}
+
+async function _reverterTodasOrdens() {
+  const inBatch = appState.ordens.filter(o => o.status === 'in_batch');
+  if (inBatch.length === 0) return;
+  
+  if (!confirm(`Deseja reverter TODAS as ${inBatch.length} ordens deste lote para o status Pendente?`)) return;
+  
+  showToast('Processando revers\u00e3o em massa...', 'info');
+
+  const lotesAfetados = [...new Set(inBatch.map(o => o.lote).filter(Boolean))];
+
+  // Atualizar ordens na mem\u00f3ria e banco
+  for (const o of inBatch) {
+    o.status = 'pending';
+    o.lote = null;
+    await DB.saveOrdem(o);
+  }
+
+  // Limpar lotes agora vazios
+  for (const lid of lotesAfetados) {
+    appState.lotes = appState.lotes.filter(l => l.id !== lid);
+    await DB.deleteLote(lid);
+  }
+
+  showToast('Sucesso! Todas as ordens voltaram para a lista Pendente.', 'success');
+  await DB.log("Reverter Massa", "unilux_ordens", `${inBatch.length} ordens revertidas`);
+  
+  renderOrdens();
+  updateBadges();
 }
 
 /* =====================================================================
