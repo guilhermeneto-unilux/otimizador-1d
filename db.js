@@ -70,7 +70,7 @@ const DB = {
           }
         });
         
-        appState.lotes  = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0);
+        appState.lotes = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0 && l.status === 'pending');
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
         appState.planos = (planosReq.data || []).map(p => {

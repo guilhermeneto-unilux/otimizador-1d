@@ -563,6 +563,8 @@ async function _finalizarOtimizacao() {
     lote.status = 'done';
     DB.saveLote(lote);
     lote.ordens.forEach(id => { const o = appState.ordens.find(x => x.id === id); if (o) { o.status = 'done'; DB.saveOrdem(o); } });
+    // Remove from in-memory list immediately so UI refreshes correctly
+    appState.lotes = appState.lotes.filter(l => l.id !== loteId);
   }
 
   // Gerar novas sobras (FUNCIONALIDADE AUTO-SAVE DESATIVADA POR SOLICITAÇÃO)
