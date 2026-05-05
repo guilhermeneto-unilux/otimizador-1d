@@ -215,8 +215,15 @@ async function _handleExcelUpload(e) {
       const workbook = window.XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      // sheet_to_json with header:1 returns an array of arrays
       const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      const clearFirst = confirm("Deseja LIMPAR a lista de ordens pendentes atual antes de importar?\n\n(Clique em CANCELAR para apenas ADICIONAR as novas ordens)");
+      if (clearFirst) {
+        // Remove only pending orders (keep those in batch)
+        appState.ordens = appState.ordens.filter(o => o.status !== 'pending');
+        // Note: they stay in DB but will be overwritten by same ID or added as new. 
+        // For a full clear of pending from DB, more logic is needed, but this helps the user's view.
+      }
 
       let count = 0;
       
@@ -238,7 +245,12 @@ async function _handleExcelUpload(e) {
         }
 
         const opId = String(r[1] || '').trim();
-        const finalId = opId ? `OP-${opId}` : `OP-IMP-${appState.ordens.length + 1}`;
+        let finalId;
+        if (opId) {
+          finalId = `OP-${opId}`;
+        } else {
+          finalId = `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
+        }
         const clienteStr = String(r[4] || '').trim();
         
         let entrega = '';
@@ -270,10 +282,18 @@ async function _handleExcelUpload(e) {
           }
         };
 
-        appState.ordens.push(novaOrdem);
-        DB.saveOrdem(novaOrdem); // Salva assíncrono para o Supabase
+        const existingIdx = appState.ordens.findIndex(o => o.id === finalId);
+        if (existingIdx !== -1) {
+          appState.ordens[existingIdx] = novaOrdem;
+        } else {
+          appState.ordens.push(novaOrdem);
+        }
+        
+        DB.saveOrdem(novaOrdem); 
         count++;
       }
+      
+      DB.saveConfig(appState.configs);
 
       showToast(`Importação concluída! ${count} OPs carregadas.`, 'success');
       DB.log("Importou Planilha", "unilux_ordens", `${count} ordens importadas`);

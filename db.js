@@ -86,6 +86,7 @@ const DB = {
         if (!appState.configs) appState.configs = {};
         if (!appState.configs.nextLoteId)  appState.configs.nextLoteId = 1;
         if (!appState.configs.nextSobraId) appState.configs.nextSobraId = 1;
+        if (!appState.configs.nextImportOpId) appState.configs.nextImportOpId = 1;
 
         this._updateStatusUI('Database Ativo');
 
