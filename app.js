@@ -33,10 +33,10 @@ const APP_MOCK = {
 // ─── SKU COLOR MAP ──────────────────────────────────────────────
 const SKU_COLOR_MAP = {
   'PER-40X40': { bg:'#dbeafe', text:'#1d4ed8' },
-  'PER-50X30': { bg:'#dcfce7', text:'#166534' },
+  'PER-50X30': { bg:'#e0f2fe', text:'#0369a1' }, // Sky Blue instead of green
   'PER-20X20': { bg:'#fef3c7', text:'#92400e' },
   'TUBO-60X2': { bg:'#ede9fe', text:'#6d28d9' },
-  'CAN-25X25': { bg:'#fee2e2', text:'#991b1b' },
+  'CAN-25X25': { bg:'#ffedd5', text:'#c2410c' }, // Orange instead of red
 };
 function skuColor(code) {
   return SKU_COLOR_MAP[code] || { bg:'#f3f4f6', text:'#374151' };

@@ -1,6 +1,6 @@
 /* ===== OTIMIZADOR PRO – UNILUX 1D (Advanced FFD + Scrap-First) ===== */
 
-const SEG_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#10b981','#ef4444','#06b6d4','#f97316','#ec4899','#14b8a6','#a855f7'];
+const SEG_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#0ea5e9','#6366f1','#06b6d4','#f97316','#ec4899','#818cf8','#a855f7'];
 
 function renderOtimizador() {
   const lotesDisp = appState.lotes.filter(l => l.status === 'pending' && l.ordens && l.ordens.length > 0);
