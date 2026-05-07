@@ -93,7 +93,16 @@ function _lotesPendentesRows(lotes) {
     <tr>
       <td class="fw-700">${l.id}</td>
       <td style="color:var(--text-400);">${(l.ordens || []).length} ordens</td>
-      <td>${(l.skus || []).map(s => { const c = skuColor(s); return `<span class="sku-tag" style="background:${c.bg};color:${c.text};margin-right:4px;">${s}</span>`; }).join('')}</td>
+      <td style="max-width: 250px; white-space: normal;">
+        ${(()=>{ 
+          const skus = l.skus || [];
+          const vis = skus.slice(0, 4);
+          const ext = skus.length - 4;
+          let h = vis.map(s => { const c = skuColor(s); return `<span class="sku-tag" style="background:${c.bg};color:${c.text};margin-right:4px;margin-bottom:4px;display:inline-block;">${s}</span>`; }).join('');
+          if(ext > 0) h += `<span class="sku-tag" style="background:#e5e7eb;color:#374151;margin-bottom:4px;display:inline-block;">+${ext}</span>`;
+          return h;
+        })()}
+      </td>
       <td style="color:var(--text-400);">${l.criacao || '—'}</td>
       <td style="text-align:right;">
         <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">

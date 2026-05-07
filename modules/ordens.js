@@ -26,6 +26,7 @@ function renderOrdens() {
           Importar Planilha
         </button>
         <button class="btn btn-white btn-sm" onclick="_novaOrdemModal()">+ Nova Ordem</button>
+        ${tab === 'pending' ? `<button class="btn btn-white btn-sm" style="color:var(--red); border-color:#fee2e2; margin-right:4px;" onclick="_excluirOrdensMassa()">Excluir Selecionadas</button>` : ''}
         <button class="btn btn-green" onclick="_criarLote()">Criar Lote →</button>
       </div>
     </div>
@@ -177,6 +178,31 @@ async function _deleteOrdem(id) {
     console.error('Erro ao deletar ordem:', err);
     showToast(`Erro ao remover ${id} do banco de dados, mas removida da sessão.`, 'error');
   }
+}
+
+async function _excluirOrdensMassa() {
+  const sel = [...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id);
+  if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
+  
+  if (!confirm(`Deseja realmente excluir permanentemente as ${sel.length} ordens selecionadas?`)) return;
+
+  showToast('Excluindo ordens...', 'info');
+
+  try {
+    for (const id of sel) {
+      appState.ordens = appState.ordens.filter(o => o.id !== id);
+      await DB.deleteOrdem(id);
+    }
+
+    await DB.log("Removeu Ordem Massa", "unilux_ordens", `${sel.length} ordens excluídas`);
+    showToast(`${sel.length} ordens excluídas com sucesso!`, 'success');
+  } catch (err) {
+    console.error('Erro na exclusão em massa:', err);
+    showToast('Houve um erro ao excluir algumas ordens no banco de dados.', 'error');
+  }
+  
+  renderOrdens();
+  updateBadges();
 }
 
 async function _reverterOrdem(id) {
