@@ -96,10 +96,39 @@ function _lotesPendentesRows(lotes) {
       <td>${(l.skus || []).map(s => { const c = skuColor(s); return `<span class="sku-tag" style="background:${c.bg};color:${c.text};margin-right:4px;">${s}</span>`; }).join('')}</td>
       <td style="color:var(--text-400);">${l.criacao || '—'}</td>
       <td style="text-align:right;">
-        <button class="btn btn-dark btn-sm" onclick="_abrirLoteNoOtimizador('${l.id}')">Otimizar Agora →</button>
+        <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
+          <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px 8px;" onclick="_excluirLotePendente('${l.id}')" title="Excluir Lote">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          </button>
+          <button class="btn btn-dark btn-sm" onclick="_abrirLoteNoOtimizador('${l.id}')">Otimizar Agora →</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
+}
+
+async function _excluirLotePendente(id) {
+  if (!confirm(`Deseja realmente excluir o lote ${id}?\nAs ordens de produção ficarão livres para serem agrupadas em outro lote.`)) return;
+
+  const lote = appState.lotes.find(l => l.id === id);
+  if (lote && lote.ordens) {
+    for (const oid of lote.ordens) {
+      const o = appState.ordens.find(x => x.id === oid);
+      if (o) {
+        o.status = 'pending';
+        o.lote = null;
+        await DB.saveOrdem(o);
+      }
+    }
+  }
+
+  appState.lotes = appState.lotes.filter(l => l.id !== id);
+  await DB.deleteLote(id);
+
+  await DB.log("Removeu Lote", "unilux_lotes", `Lote pendente ${id} excluído`);
+  showToast(`Lote ${id} excluído com sucesso!`, 'success');
+  renderPlanos();
+  updateBadges();
 }
 
 function _abrirLoteNoOtimizador(loteId) {

@@ -29,7 +29,7 @@ function renderOtimizador() {
           </div>
         </div>
 
-        <button class="btn btn-green" style="width:100%; justify-content:center; padding:12px;" onclick="_calcOtimizacao()">
+        <button class="btn btn-green" id="btnCalcOtim" style="width:100%; justify-content:center; padding:12px;" onclick="_startOtimizacao()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           Calcular Otimização
         </button>
@@ -84,6 +84,72 @@ function renderOtimizador() {
    5. Fase 3 — Refinamento: realocar peças para reduzir bins.
    ============================================================ */
 
+function _startOtimizacao() {
+  const loteId = document.getElementById('otimLote').value;
+  if (!loteId) { showToast('Selecione um lote!', 'error'); return; }
+
+  const btn = document.getElementById('btnCalcOtim');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> Calculando...`;
+  }
+
+  const area = document.getElementById('otimResults');
+  if (area) {
+    area.innerHTML = `
+      <div class="empty-state" style="background:var(--white); border:1px dashed var(--border); border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px;">
+        <div style="animation: spin 1s linear infinite; display:inline-block;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.5">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+        </div>
+        <p>Calculando melhor aproveitamento... Por favor, aguarde.</p>
+      </div>
+      <style>
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+      </style>
+    `;
+  }
+
+  // Defer computation to allow paint
+  setTimeout(() => {
+    try {
+      _calcOtimizacao();
+    } catch (e) {
+      console.error("Optimization error:", e);
+      if (e.message === 'LOTE_CORROMPEU') {
+        showToast('As ordens deste lote não existem mais no sistema.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <p>Lote Inválido. As ordens de produção referentes a este lote foram deletadas do banco de dados (provavelmente via exclusão manual ou atualização da planilha sem essas ordens). Exclua ou recrie este lote para continuar.</p>
+            </div>
+          `;
+        }
+      } else {
+        showToast('Erro durante a otimização. Verifique os dados.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <p>Falha ao calcular otimização. Verifique se os SKUs possuem o cadastro correto.</p>
+            </div>
+          `;
+        }
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Calcular Otimização`;
+      }
+    }
+  }, 100);
+}
+
 function _calcOtimizacao() {
   const loteId   = document.getElementById('otimLote').value;
   const cfgTrim  = appState.configs ? (appState.configs.trim_mm || 0) : 0;
@@ -93,6 +159,10 @@ function _calcOtimizacao() {
 
   const lote   = appState.lotes.find(l => l.id === loteId);
   const ordens = appState.ordens.filter(o => lote.ordens.includes(o.id));
+
+  if (!ordens || ordens.length === 0) {
+    throw new Error('LOTE_CORROMPEU');
+  }
 
   // 1. Montar TODAS as peças individuais a partir das OPs (cada unidade é uma peça separada)
   const allPieces = [];
@@ -121,7 +191,7 @@ function _calcOtimizacao() {
     const skuMinSobra = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
 
     // ── FASE 1: Scrap-First — Tentar usar retalhos existentes ──
-    const scraps = appState.sobras
+    const scraps = (appState.sobras || [])
       .filter(s => s.sku === sku && !usedScraps.includes(s.id))
       .sort((a, b) => a.medida - b.medida); // Menor primeiro para best-fit
 
