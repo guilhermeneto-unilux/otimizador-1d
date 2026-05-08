@@ -5,15 +5,15 @@
 // ─── MOCK DATA (seeded via "Criar Dados de Teste") ──────────────
 const APP_MOCK = {
   skus: [
-    { id:'S01', code:'PER-40X40', desc:'Perfil Quadrado 40×40mm',   dims: [{dim: 6000, qty: 40}] },
-    { id:'S02', code:'PER-50X30', desc:'Perfil Retangular 50×30mm', dims: [{dim: 6000, qty: 25}] },
-    { id:'S03', code:'PER-20X20', desc:'Perfil Quadrado 20×20mm',   dims: [{dim: 3000, qty: 60}] },
-    { id:'S04', code:'TUBO-60X2', desc:'Tubo Redondo 60×2mm',       dims: [{dim: 6000, qty: 15}] },
-    { id:'S05', code:'CAN-25X25', desc:'Cantoneira 25×25mm',        dims: [{dim: 6000, qty: 8}] },
+    { id:'S01', code:'PER-40X40', desc:'Perfil Quadrado 40×40',   dims: [{dim: 6.0, qty: 40}] },
+    { id:'S02', code:'PER-50X30', desc:'Perfil Retangular 50×30', dims: [{dim: 6.0, qty: 25}] },
+    { id:'S03', code:'PER-20X20', desc:'Perfil Quadrado 20×20',   dims: [{dim: 3.0, qty: 60}] },
+    { id:'S04', code:'TUBO-60X2', desc:'Tubo Redondo 60×2',       dims: [{dim: 6.0, qty: 15}] },
+    { id:'S05', code:'CAN-25X25', desc:'Cantoneira 25×25',        dims: [{dim: 6.0, qty: 8}] },
   ],
   // Barras movidas para dentro de skus.dims
   ordens: [
-    { id:'OP-001', sku:'PER-40X40', dim:1200, qty:8,  entrega:'2026-04-15', cliente:'Metalfab Ltda',     status:'pending', lote:null },
+    { id:'OP-001', sku:'PER-40X40', dim:1.2, qty:8,  entrega:'2026-04-15', cliente:'Metalfab Ltda',     status:'pending', lote:null },
     { id:'OP-002', sku:'PER-50X30', dim:850,  qty:12, entrega:'2026-04-16', cliente:'Estrutura Tech',    status:'pending', lote:null },
     { id:'OP-003', sku:'PER-20X20', dim:500,  qty:20, entrega:'2026-04-14', cliente:'Construção Rápida', status:'pending', lote:null },
   ],
@@ -48,8 +48,7 @@ function formatDate(iso) {
 }
 function getSkuDim(code) {
   const s = appState.skus.find(x => x.code === code);
-  if (!s || !s.dims || s.dims.length === 0) return 6000;
-  return Math.max(...s.dims.map(d => d.dim)); // Returns the largest standard bar initially
+  return 6.0; // Returns the largest standard bar initially
 }
 
 // ─── ROUTER ─────────────────────────────────────────────────────
@@ -116,7 +115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await DB.init(APP_MOCK);
   
   // One-time session invalidation: force everyone to log in fresh
-  const APP_VERSION = '2.14';
+  const APP_VERSION = '3.00';
   if (localStorage.getItem('unilux_app_version') !== APP_VERSION) {
     localStorage.removeItem('unilux_session');
     localStorage.setItem('unilux_app_version', APP_VERSION);

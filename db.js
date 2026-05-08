@@ -13,7 +13,7 @@ const appState = {
   ordens: [], lotes: [], planos: [], barras: [], sobras: [], historico: [], skus: [],
   users: [], audit: [],
   nextLoteId: 1, nextSobraId: 1, nextPlanoId: 1,
-  configs: { trim_mm: 0, scrap_penalty_pct: 0 },
+  configs: { trim_m: 0, scrap_penalty_pct: 0 },
   currentUser: null
 };
 
@@ -43,8 +43,8 @@ const DB = {
         appState.skus   = skusReq.data || [];
         appState.skus.forEach(s => { 
           if (!s.dims) s.dims = []; 
-          // Se min_sobra estiver nulo no banco, default 1000
-          if (s.min_sobra === undefined || s.min_sobra === null) s.min_sobra = 1000;
+          // Se min_sobra estiver nulo no banco, default 1.0
+          if (s.min_sobra === undefined || s.min_sobra === null) s.min_sobra = 1.0;
           
           // Compatibilidade Legada: se a descrição ainda estiver em formato JSON (antigo)
           if (s.desc && s.desc.startsWith('{"_desc"')) {
@@ -52,7 +52,7 @@ const DB = {
               const parsed = JSON.parse(s.desc);
               s.desc = parsed._desc;
               // Só sobrescreve se a nova coluna estiver vazia ou se o JSON for mais recente (heurística simples)
-              if (s.min_sobra === 1000 && parsed.min !== undefined) s.min_sobra = parsed.min;
+              if ((s.min_sobra === 1000 || s.min_sobra === 1.0) && parsed.min !== undefined) s.min_sobra = parsed.min;
             } catch(e) {}
           }
         });

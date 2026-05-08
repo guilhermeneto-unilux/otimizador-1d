@@ -11,7 +11,7 @@ function renderSkus() {
     
     // Lista das dimensões para exibição
     const dimsText = s.dims && s.dims.length > 0 
-      ? s.dims.map(d => `<span style="background:#e5e7eb; padding:2px 6px; border-radius:4px; font-size:11px;">${d.dim}mm (${d.qty}x)</span>`).join(' ')
+      ? s.dims.map(d => `<span style="background:#e5e7eb; padding:2px 6px; border-radius:4px; font-size:11px;">${d.dim}m (${d.qty}x)</span>`).join(' ')
       : '<span style="color:#9ca3af;">Sem estoque</span>';
 
     return `
@@ -30,7 +30,7 @@ function renderSkus() {
           </div>
         </td>
         <td>
-          <div style="font-weight:600; color:var(--text-400);">${s.min_sobra !== undefined ? s.min_sobra : 1000} mm</div>
+          <div style="font-weight:600; color:var(--text-400);">${s.min_sobra !== undefined ? s.min_sobra : 1.0} m</div>
         </td>
         <td style="text-align:right;">
           <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
@@ -62,7 +62,7 @@ function renderSkus() {
             <th>Código SKU</th>
             <th>Descrição do Perfil</th>
             <th>Nome Resumido</th>
-            <th>Dimensões & Lotes (mm)</th>
+            <th>Dimensões & Lotes (m)</th>
             <th>Total Virgem em Estoque</th>
             <th>Sobra Mínima</th>
             <th style="text-align:right;">Ações</th>
@@ -103,8 +103,8 @@ function _getSkuFormHtml(sku = null) {
       <input type="text" class="form-control" id="skFolder" value="${sku && sku.folder ? sku.folder : ''}">
     </div>
     <div class="form-group">
-      <label class="form-label">Sobra Mínima para Guarda (mm) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
-      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 1000}">
+      <label class="form-label">Sobra Mínima para Guarda (m) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
+      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 1.0}">
     </div>
 
     <div style="margin:24px 0 16px; border-bottom:1px solid var(--border);">
@@ -114,8 +114,8 @@ function _getSkuFormHtml(sku = null) {
     <!-- MEDIDA 1 -->
     <div style="display:flex; gap:16px;">
       <div class="form-group" style="flex:1;">
-        <label class="form-label">Comprimento 1 (mm)</label>
-        <input type="number" class="form-control" id="skDim1" value="${d1.dim}" placeholder="Ex: 6000">
+        <label class="form-label">Comprimento 1 (m)</label>
+        <input type="number" class="form-control" id="skDim1" value="${d1.dim}" placeholder="Ex: 6.000">
       </div>
       <div class="form-group" style="flex:1;">
         <label class="form-label">Qtd Barras 1</label>
@@ -126,8 +126,8 @@ function _getSkuFormHtml(sku = null) {
     <!-- MEDIDA 2 -->
     <div style="display:flex; gap:16px;">
       <div class="form-group" style="flex:1;">
-        <label class="form-label">Comprimento 2 (mm) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
-        <input type="number" class="form-control" id="skDim2" value="${d2.dim}">
+        <label class="form-label">Comprimento 2 (m) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
+        <input type="number" step="0.001" class="form-control" id="skDim2" value="${d2.dim}">
       </div>
       <div class="form-group" style="flex:1;">
         <label class="form-label">Qtd Barras 2</label>
@@ -138,8 +138,8 @@ function _getSkuFormHtml(sku = null) {
     <!-- MEDIDA 3 -->
     <div style="display:flex; gap:16px; margin-bottom:0;">
       <div class="form-group" style="flex:1;">
-        <label class="form-label">Comprimento 3 (mm) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
-        <input type="number" class="form-control" id="skDim3" value="${d3.dim}">
+        <label class="form-label">Comprimento 3 (m) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
+        <input type="number" step="0.001" class="form-control" id="skDim3" value="${d3.dim}">
       </div>
       <div class="form-group" style="flex:1;">
         <label class="form-label">Qtd Barras 3</label>
@@ -152,7 +152,7 @@ function _getSkuFormHtml(sku = null) {
 function _extractDimsFromForm() {
   const dims = [];
   for (let i=1; i<=3; i++) {
-    const d = parseInt(document.getElementById('skDim'+i).value);
+    const d = parseFloat(document.getElementById('skDim'+i).value);
     const q = parseInt(document.getElementById('skQty'+i).value);
     if (!isNaN(d) && d > 0 && !isNaN(q) && q >= 0) {
       dims.push({ dim: d, qty: q });
@@ -175,7 +175,7 @@ async function _salvarSku() {
   const desc = document.getElementById('skDesc').value.trim();
   const short_desc = document.getElementById('skShortDesc').value.trim();
   const folder = document.getElementById('skFolder').value.trim();
-  const minSobra = parseInt(document.getElementById('skMinSobra').value) || 1000;
+  const minSobra = parseFloat(document.getElementById('skMinSobra').value) || 1.0;
   
   if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
   if (appState.skus.some(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
@@ -214,7 +214,7 @@ async function _saveEditSku(id) {
     s.desc = document.getElementById('skDesc').value.trim();
     s.short_desc = document.getElementById('skShortDesc').value.trim();
     s.folder = document.getElementById('skFolder').value.trim();
-    s.min_sobra = parseInt(document.getElementById('skMinSobra').value) || 1000;
+    s.min_sobra = parseFloat(document.getElementById('skMinSobra').value) || 1.0;
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
     s.dims = dims;

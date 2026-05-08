@@ -505,11 +505,11 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
       </div>
       <div class="stat-box" style="border-top:3px solid #22c55e;">
         <div class="stat-lbl">Sobras Geradas</div>
-        <div class="stat-val" style="color:#22c55e;">${sobrasGeradas} <span style="font-size:11px; font-weight:400;">(${Math.round(totalSobraUtil)}mm total)</span></div>
+        <div class="stat-val" style="color:#22c55e;">${sobrasGeradas} <span style="font-size:11px; font-weight:400;">(${parseFloat(totalSobraUtil).toFixed(2)}m total)</span></div>
       </div>
       <div class="stat-box" style="border-top:3px solid var(--red);">
         <div class="stat-lbl">Desperdício</div>
-        <div class="stat-val red">${Math.round(globalWaste)} mm</div>
+        <div class="stat-val red">${parseFloat(globalWaste).toFixed(2)} m</div>
       </div>
     </div>
 
@@ -562,7 +562,7 @@ function _renderBarCard(p, idx, cfgTrim) {
   const segs = p.pcs.map(pc => {
     const pct = (pc.dim / p.len * 100).toFixed(2);
     const bg = p.type === 'scrap' ? '#f59e0b' : opColors[pc.op];
-    return `<div class="bar-seg" style="width:${pct}%;background:${bg};" title="${pc.op}: ${pc.dim}mm">
+    return `<div class="bar-seg" style="width:${pct}%;background:${bg};" title="${pc.op}: ${pc.dim}m">
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;">${pc.dim}</span>
     </div>`;
   }).join('');
@@ -570,7 +570,7 @@ function _renderBarCard(p, idx, cfgTrim) {
   // Segmento de refile
   const refilePct = cfgTrim > 0 ? (cfgTrim / p.len * 100).toFixed(2) : 0;
   const refileEl = cfgTrim > 0
-    ? `<div class="bar-seg" style="width:${refilePct}%; background:#e5e7eb; border-left:1px dashed #9ca3af;" title="Refile: ${cfgTrim}mm"></div>`
+    ? `<div class="bar-seg" style="width:${refilePct}%; background:#e5e7eb; border-left:1px dashed #9ca3af;" title="Refile: ${cfgTrim}m"></div>`
     : '';
 
   // Segmento de sobra/refugo
@@ -578,12 +578,12 @@ function _renderBarCard(p, idx, cfgTrim) {
   let wasteEl = '';
   if (p.rem > 0) {
     if (geraSobra) {
-      wasteEl = `<div class="bar-seg" style="width:${sobraPct}%; background:linear-gradient(135deg, #22c55e, #16a34a); border-left:2px solid #15803d;" title="SOBRA GERADA → Estoque: ${p.rem}mm">
-        <span style="color:#fff; font-weight:700; font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.3);">♻ ${p.rem}mm</span>
+      wasteEl = `<div class="bar-seg" style="width:${sobraPct}%; background:linear-gradient(135deg, #22c55e, #16a34a); border-left:2px solid #15803d;" title="SOBRA GERADA → Estoque: ${p.rem}m">
+        <span style="color:#fff; font-weight:700; font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.3);">♻ ${p.rem}m</span>
       </div>`;
     } else {
-      wasteEl = `<div class="bar-seg" style="width:${sobraPct}%; background:${p.rem > 50 ? '#ef4444' : 'repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 4px, #e5e7eb 4px, #e5e7eb 8px)'}; color:${p.rem > 50 ? '#fff' : 'var(--text-400)'};" title="Refugo: ${p.rem}mm">
-        <span style="font-size:10px;">${p.rem > 30 ? p.rem + 'mm' : ''}</span>
+      wasteEl = `<div class="bar-seg" style="width:${sobraPct}%; background:${p.rem > 0.05 ? '#ef4444' : 'repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 4px, #e5e7eb 4px, #e5e7eb 8px)'}; color:${p.rem > 0.05 ? '#fff' : 'var(--text-400)'};" title="Refugo: ${p.rem}m">
+        <span style="font-size:10px;">${p.rem > 0 ? p.rem + 'm' : ''}</span>
       </div>`;
     }
   }
@@ -593,7 +593,7 @@ function _renderBarCard(p, idx, cfgTrim) {
 
   // Badge de sobra gerada
   const sobraBadge = geraSobra
-    ? `<span class="status-badge" style="background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0; margin-left:8px; animation: pulse-sobra 2s ease-in-out infinite;">♻ Gera Sobra ${p.rem}mm → Estoque</span>`
+    ? `<span class="status-badge" style="background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0; margin-left:8px; animation: pulse-sobra 2s ease-in-out infinite;">♻ Gera Sobra ${p.rem}m → Estoque</span>`
     : '';
 
   return `
@@ -601,19 +601,19 @@ function _renderBarCard(p, idx, cfgTrim) {
       <div class="bar-result-header">
         <div>
           <span style="font-size:14px; font-weight:700;">Barra #${idx+1}</span>
-          <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} · ${p.len}mm · ${p.type === 'scrap' ? 'Retalho ' + p.srcId : 'Virgem'}</span>
+          <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} · ${p.len}m · ${p.type === 'scrap' ? 'Retalho ' + p.srcId : 'Virgem'}</span>
           ${sobraBadge}
         </div>
         <span class="status-badge ${parseFloat(effBar) >= 90 ? 'badge-approved' : parseFloat(effBar) >= 70 ? 'badge-batch' : 'badge-pending'}">${effBar}% aproveitamento</span>
       </div>
       <div class="bar-track">${segs}${refileEl}${wasteEl}</div>
       <div class="bar-meta">
-        <span>${p.pcs.length} peça(s): ${p.pcs.map(pc => `${pc.op}(${pc.dim}mm)`).join(', ')}</span>
+        <span>${p.pcs.length} peça(s): ${p.pcs.map(pc => `${pc.op}(${pc.dim}m)`).join(', ')}</span>
         <span style="font-weight:600; color:${geraSobra ? '#16a34a' : p.rem > 0 ? '#ef4444' : 'var(--text-400)'};">
           ${geraSobra 
-            ? `♻ Sobra: ${p.rem}mm → Vai para Estoque` 
+            ? `♻ Sobra: ${p.rem}m → Vai para Estoque` 
             : p.rem > 0 
-              ? `🗑 Descarte: ${p.rem}mm` 
+              ? `🗑 Descarte: ${p.rem}m` 
               : '✓ Zero desperdício'}
         </span>
       </div>
@@ -668,7 +668,7 @@ async function _finalizarOtimizacao() {
   plans.filter(p => p.type === 'virgin').forEach(p => {
     barrasUsadas++;
     const [skCode, dStr] = p.srcId.split('|');
-    const dim = parseInt(dStr);
+    const dim = parseFloat(dStr);
     const skuObj = appState.skus.find(x => x.code === skCode);
     if (skuObj && skuObj.dims) {
       const dimEntry = skuObj.dims.find(d => d.dim === dim);

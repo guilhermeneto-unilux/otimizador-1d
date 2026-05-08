@@ -1,5 +1,5 @@
 function renderConfiguracoes() {
-  const c = appState.configs || { trim_mm: 0, scrap_penalty_pct: 0 };
+  const c = appState.configs || { trim_m: 0, scrap_penalty_pct: 0 };
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
       <div>
@@ -12,8 +12,8 @@ function renderConfiguracoes() {
       <h3 style="margin-bottom:16px;">Motor Otimizador (FFD)</h3>
       
       <div class="form-group">
-        <label class="form-label">Esquadrejamento / Refile Inicial (mm)</label>
-        <input type="number" id="cfgTrim" class="form-control" value="${c.trim_mm}" placeholder="Ex: 40">
+        <label class="form-label">Esquadrejamento / Refile Inicial (m)</label>
+        <input type="number" id="cfgTrim" class="form-control" value="${c.trim_m}" placeholder="Ex: 0.04">
         <div class="form-hint">Tamanho descartado das pontas de qualquer barra virgem ou sobra antes do corte.</div>
       </div>
       
@@ -29,9 +29,9 @@ function renderConfiguracoes() {
 }
 
 function _salvarConfig() {
-  const trim = parseInt(document.getElementById('cfgTrim').value) || 0;
+  const trim = parseFloat(document.getElementById('cfgTrim').value) || 0;
   const scrap = parseInt(document.getElementById('cfgScrap').value) || 0;
-  appState.configs = { trim_mm: trim, scrap_penalty_pct: scrap };
+  appState.configs = { trim_m: trim, scrap_penalty_pct: scrap };
   DB.saveConfig(appState.configs);
   showToast('Configurações salvas!', 'success');
 }

@@ -67,7 +67,7 @@ function _ordensRows(list) {
       <td><input type="checkbox" class="ord-chk" data-id="${o.id}"></td>
       <td class="fw-700" style="font-size:13px;">${o.id}</td>
       <td><span class="sku-tag" style="background:${c.bg};color:${c.text};">${o.sku}</span></td>
-      <td class="fw-700">${o.dim} mm</td>
+      <td class="fw-700">${o.dim} m</td>
       <td>${o.qty} pç</td>
       <td style="color:var(--text-400);">${_fmtDate(o.entrega)}</td>
       <td style="color:var(--text-400);">${o.cliente || '—'}</td>
@@ -103,8 +103,8 @@ function _novaOrdemModal() {
     </div>
     <div class="form-row">
       <div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Dimensão de Corte (mm)</label>
-        <input class="form-control" type="number" id="opDim" placeholder="ex: 1200">
+        <label class="form-label">Dimensão de Corte (m)</label>
+        <input class="form-control" type="number" step="0.001" id="opDim" placeholder="ex: 1.2">
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Quantidade (peças)</label>
@@ -127,7 +127,7 @@ function _novaOrdemModal() {
 
 function _salvarOrdem() {
   const sku     = document.getElementById('opSku').value;
-  const dim     = parseInt(document.getElementById('opDim').value);
+  const dim     = parseFloat(document.getElementById('opDim').value);
   const qty     = parseInt(document.getElementById('opQty').value);
   const cliente = document.getElementById('opCliente').value || 'Geral';
   const entrega = document.getElementById('opEntrega').value || new Date().toISOString().split('T')[0];
