@@ -129,6 +129,7 @@ const DB = {
 
   async saveSku(s) {
     if (!supabaseClient) return;
+    console.log('[DB] Salvando SKU:', s.code);
     const dbObj = { 
       id: s.id, 
       code: s.code, 
@@ -140,9 +141,10 @@ const DB = {
     };
     const { error } = await supabaseClient.from('unilux_skus').upsert(dbObj);
     if (error) {
-      console.error('Erro SKUs:', error);
+      console.error('[DB] Erro ao salvar SKU no Supabase:', error);
       throw error;
     }
+    console.log('[DB] SKU salvo com sucesso!');
   },
 
   async saveOrdem(o) {

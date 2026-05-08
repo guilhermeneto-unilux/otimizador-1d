@@ -11,7 +11,7 @@ function renderSkus() {
     
     // Lista das dimensões para exibição
     const dimsText = s.dims && s.dims.length > 0 
-      ? s.dims.map(d => `<span style="background:#e5e7eb; padding:2px 6px; border-radius:4px; font-size:11px;">${d.dim}m (${d.qty}x)</span>`).join(' ')
+      ? s.dims.map(d => `<span style="background:#e5e7eb; padding:2px 6px; border-radius:4px; font-size:11px;">${fmtM(d.dim)} (${d.qty}x)</span>`).join(' ')
       : '<span style="color:#9ca3af;">Sem estoque</span>';
 
     return `
@@ -30,7 +30,7 @@ function renderSkus() {
           </div>
         </td>
         <td>
-          <div style="font-weight:600; color:var(--text-400);">${s.min_sobra !== undefined ? s.min_sobra : 1.0} m</div>
+          <div style="font-weight:600; color:var(--text-400);">${fmtM(s.min_sobra)}</div>
         </td>
         <td style="text-align:right;">
           <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
@@ -175,7 +175,7 @@ async function _salvarSku() {
   const desc = document.getElementById('skDesc').value.trim();
   const short_desc = document.getElementById('skShortDesc').value.trim();
   const folder = document.getElementById('skFolder').value.trim();
-  const minSobra = parseFloat(document.getElementById('skMinSobra').value) || 1.0;
+  const minSobra = parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) || 1.0;
   
   if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
   if (appState.skus.some(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
@@ -186,11 +186,17 @@ async function _salvarSku() {
   const id = `S${String(appState.skus.length + 1).padStart(2,'0')}`;
   const s = { id, code, desc, short_desc, folder, dims, min_sobra: minSobra };
   
-  appState.skus.push(s);
-  await DB.saveSku(s);
-  await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
-  
-  closeModal(); showToast('Perfil salvo com sucesso!', 'success'); renderSkus();
+  try {
+    appState.skus.push(s);
+    await DB.saveSku(s);
+    await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
+    closeModal(); 
+    showToast('Perfil salvo com sucesso!', 'success'); 
+    renderSkus();
+  } catch (err) {
+    console.error('Falha ao salvar SKU:', err);
+    showToast('Falha ao salvar no banco. Verifique sua conexão.', 'error');
+  }
 }
 
 function _editSkuModal(id) {
@@ -210,18 +216,28 @@ function _editSkuModal(id) {
 
 async function _saveEditSku(id) {
   const s = appState.skus.find(x => x.id === id);
-  if (s) {
+  if (!s) { showToast('SKU não encontrado!', 'error'); return; }
+
+  try {
     s.desc = document.getElementById('skDesc').value.trim();
     s.short_desc = document.getElementById('skShortDesc').value.trim();
     s.folder = document.getElementById('skFolder').value.trim();
-    s.min_sobra = parseFloat(document.getElementById('skMinSobra').value) || 1.0;
+    s.min_sobra = parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) || 1.0;
+    
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
     s.dims = dims;
+    
     await DB.saveSku(s);
     await DB.log("Editou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
+    
+    closeModal(); 
+    showToast('Estoque atualizado!', 'success'); 
+    renderSkus();
+  } catch (err) {
+    console.error('Falha ao atualizar SKU:', err);
+    showToast('Erro ao atualizar o banco de dados.', 'error');
   }
-  closeModal(); showToast('Estoque atualizado!', 'success'); renderSkus();
 }
 
 async function _deleteSku(id) {

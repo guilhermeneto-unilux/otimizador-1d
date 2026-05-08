@@ -95,9 +95,9 @@ function renderSobras() {
           const cBg = skuColor(s.sku).bg;
           const cText = skuColor(s.sku).text;
           gridHtml += `
-            <div class="wms-cell occupied" style="background:${cBg}; color:${cText}; border-color:${cText}44;" onclick="_clickWmsSlot('${ender}', true)" title="SKU: ${s.sku}\nMedida: ${s.medida}m">
+            <div class="wms-cell occupied" style="background:${cBg}; color:${cText}; border-color:${cText}44;" onclick="_clickWmsSlot('${ender}', true)" title="SKU: ${s.sku}\nMedida: ${fmtM(s.medida)}">
               <div style="font-size:9px; opacity:0.7; position:absolute; top:2px; left:4px;">${cellLabel}</div>
-              <div class="sc-len">${s.medida}</div>
+              <div class="sc-len">${fmtM(s.medida)}</div>
               <div style="font-size:8px; font-weight:700; opacity:0.9;">${s.sku}</div>
             </div>
           `;
@@ -138,7 +138,7 @@ function _renderUnallocated() {
         <thead><tr><th>ID</th><th>SKU</th><th>Medida</th><th>Ação</th></tr></thead>
         <tbody>
           ${list.map(s => `<tr>
-            <td>${s.id}</td><td>${s.sku}</td><td>${s.medida}m</td>
+            <td>${s.id}</td><td>${s.sku}</td><td>${fmtM(s.medida)}</td>
             <td><button class="btn btn-white btn-sm" onclick="_consumirSobra('${s.id}')">Excluir</button></td>
           </tr>`).join('')}
         </tbody>
@@ -158,7 +158,7 @@ function _clickWmsSlot(endereco, isOccupied) {
         <div style="background:#f9fafb; padding:16px; border-radius:6px; margin-bottom:16px; border:1px solid var(--border);">
           <div style="font-size:12px; color:var(--text-500); margin-bottom:4px;">Geração: ${s.criacao} | ${s.origem !== 'Manual' ? 'Lote: '+s.origem : 'Manual'}</div>
           <div style="font-size:20px; font-weight:800;">${s.sku} <span style="color:var(--text-400); font-weight:500;">· ${skuObj ? skuObj.desc : ''}</span></div>
-          <div style="font-size:32px; font-weight:900; color:var(--orange); margin-top:8px;">${s.medida} m</div>
+          <div style="font-size:32px; font-weight:900; color:var(--orange); margin-top:8px;">${fmtM(s.medida)}</div>
         </div>
       `,
       `
@@ -235,7 +235,7 @@ function _salvarSobra(btnEl) {
 
   const skuVal = elSkuInput.value.trim();
   const skuPart = skuVal.includes(' - ') ? skuVal.split(' - ')[0].trim() : skuVal;
-  const med = parseFloat(elMed.value);
+  const med = parseFloat(elMed.value.replace(',', '.'));
   const endereco = elEnd.value;
   
   if (!skuVal || !med || !endereco) { 
@@ -387,7 +387,7 @@ function _avancarCadastroSobra(quadId) {
          </div>
           <div class="form-group">
            <label class="form-label" style="font-weight:700;">Tamanho (m)</label>
-           <input type="number" step="0.001" class="form-control" id="soMed" placeholder="Ex: 2.4" style="font-size:16px; padding:12px;">
+            <input type="number" step="0.001" class="form-control" id="soMed" placeholder="Ex: 2,400" style="font-size:16px; padding:12px;">
          </div>
       </div>
     `,

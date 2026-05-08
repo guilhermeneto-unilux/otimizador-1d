@@ -51,6 +51,13 @@ function getSkuDim(code) {
   return 6.0; // Returns the largest standard bar initially
 }
 
+// ─── FORMATTING UTILITIES ───────────────────────────────────────
+function fmtM(val) {
+  if (val === undefined || val === null || isNaN(val)) return '0,000 m';
+  // Formata com 3 casas decimais e troca ponto por vírgula para padrão brasileiro
+  return parseFloat(val).toFixed(3).replace('.', ',') + ' m';
+}
+
 // ─── ROUTER ─────────────────────────────────────────────────────
 const ROUTES = {
   dashboard:     renderDashboard,
@@ -115,7 +122,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await DB.init(APP_MOCK);
   
   // One-time session invalidation: force everyone to log in fresh
-  const APP_VERSION = '3.00';
+  const APP_VERSION = '3.10';
   if (localStorage.getItem('unilux_app_version') !== APP_VERSION) {
     localStorage.removeItem('unilux_session');
     localStorage.setItem('unilux_app_version', APP_VERSION);

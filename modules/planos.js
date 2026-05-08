@@ -345,7 +345,7 @@ function _renderBarResult(bin, idx) {
   return `
     <div class="res-item" style="padding:16px; border:1px solid var(--border); border-radius:12px; background:white;">
       <div class="res-item-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${bin.len}m</span></span>
+        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${fmtM(bin.len)}</span></span>
         <span class="status-badge badge-approved">${aprov}% usado</span>
       </div>
       <div class="bar-viz" style="height:48px; background:var(--bg-200); border-radius:6px; display:flex; position:relative; overflow:hidden; border:1px solid var(--border);">
@@ -353,12 +353,12 @@ function _renderBarResult(bin, idx) {
           const w = (pc.dim / bin.len) * 100;
           const c = skuColor(pc.sku);
           return `
-            <div class="bar-pc" style="width:${w}%; background:${c.bg}; color:${c.text}; height:100%; border-right:1px solid rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; position:relative;" title="${pc.op}: ${pc.dim}m">
+            <div class="bar-pc" style="width:${w}%; background:${c.bg}; color:${c.text}; height:100%; border-right:1px solid rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; position:relative;" title="${pc.op}: ${fmtM(pc.dim)}">
               ${pc.dim}
             </div>
           `;
         }).join('')}
-        ${bin.rem > 0 ? `<div style="flex:1; background:repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.03) 5px, rgba(0,0,0,0.03) 10px); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-400);">Sobra: ${bin.rem}m</div>` : ''}
+        ${bin.rem > 0 ? `<div style="flex:1; background:repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.03) 5px, rgba(0,0,0,0.03) 10px); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-400);">Sobra: ${fmtM(bin.rem)}</div>` : ''}
       </div>
       <div style="margin-top:8px; font-size:12px; color:var(--text-400); display:flex; gap:12px;">
         <span>Material: <b>${bin.sku}</b></span>
