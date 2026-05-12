@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await DB.init(APP_MOCK);
   
   // One-time session invalidation: force everyone to log in fresh
-  const APP_VERSION = '3.10';
+  const APP_VERSION = '3.11';
   if (localStorage.getItem('unilux_app_version') !== APP_VERSION) {
     localStorage.removeItem('unilux_session');
     localStorage.setItem('unilux_app_version', APP_VERSION);

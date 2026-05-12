@@ -152,7 +152,7 @@ function _getSkuFormHtml(sku = null) {
 function _extractDimsFromForm() {
   const dims = [];
   for (let i=1; i<=3; i++) {
-    const val = document.getElementById('skDim'+i).value;
+    const val = String(document.getElementById('skDim'+i).value);
     const d = Math.round(parseFloat(val.replace(',', '.')) * 1000);
     const q = parseInt(document.getElementById('skQty'+i).value);
     if (!isNaN(d) && d > 0 && !isNaN(q) && q >= 0) {
@@ -222,16 +222,23 @@ async function _saveEditSku(id) {
   if (!s) { showToast('SKU não encontrado!', 'error'); return; }
 
   try {
+    // Preservar o code original do objeto em memória (nunca ler do input disabled)
+    const originalCode = s.code;
+    
     s.desc = document.getElementById('skDesc').value.trim();
     s.short_desc = document.getElementById('skShortDesc').value.trim();
     s.folder = document.getElementById('skFolder').value.trim();
     
     // Converte Metros para Milímetros (int)
-    s.min_sobra = Math.round(parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) * 1000) || 1000;
+    const minSobraRaw = document.getElementById('skMinSobra').value;
+    s.min_sobra = Math.round(parseFloat(String(minSobraRaw).replace(',', '.')) * 1000) || 1000;
     
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }
     s.dims = dims;
+    
+    // Garantir que o code está correto antes de salvar
+    s.code = originalCode;
     
     await DB.saveSku(s);
     await DB.log("Editou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
@@ -241,7 +248,7 @@ async function _saveEditSku(id) {
     renderSkus();
   } catch (err) {
     console.error('Falha ao atualizar SKU:', err);
-    showToast('Erro ao atualizar o banco de dados.', 'error');
+    showToast('Erro ao atualizar o banco de dados. Detalhes: ' + (err.message || JSON.stringify(err)), 'error');
   }
 }
 

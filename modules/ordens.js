@@ -98,8 +98,14 @@ function _novaOrdemModal() {
   const skuOpts = appState.skus.map(s => `<option value="${s.code}">${s.code} – ${s.desc}</option>`).join('');
   openModal('Nova Ordem de Produção', `
     <div class="form-group">
+      <label class="form-label">Número da OP</label>
+      <input class="form-control" type="text" id="opId" placeholder="Ex: 12345 ou OP-12345">
+    </div>
+    <div class="form-group">
       <label class="form-label">SKU / Material</label>
-      <select class="form-control" id="opSku">${skuOpts}</select>
+      <input class="form-control" type="text" id="opSku" list="skuDatalist" placeholder="Digite ou cole o código SKU..." autocomplete="off">
+      <datalist id="skuDatalist">${skuOpts}</datalist>
+      <div class="form-hint">Digite, cole (Ctrl+V) ou selecione da lista</div>
     </div>
     <div class="form-row">
       <div class="form-group" style="margin-bottom:0">
@@ -126,18 +132,30 @@ function _novaOrdemModal() {
 }
 
 function _salvarOrdem() {
-  const sku     = document.getElementById('opSku').value;
-  const dim     = Math.round(parseFloat(document.getElementById('opDim').value.replace(',', '.')) * 1000);
-  const qty     = parseInt(document.getElementById('opQty').value);
+  let rawId   = document.getElementById('opId').value.trim();
+  const sku   = document.getElementById('opSku').value.trim();
+  const dim   = Math.round(parseFloat(document.getElementById('opDim').value.replace(',', '.')) * 1000);
+  const qty   = parseInt(document.getElementById('opQty').value);
   const cliente = document.getElementById('opCliente').value || 'Geral';
   const entrega = document.getElementById('opEntrega').value || new Date().toISOString().split('T')[0];
+  
+  if (!rawId) { showToast('Preencha o número da OP!', 'error'); return; }
+  if (!sku) { showToast('Selecione um SKU/Material!', 'error'); return; }
   if (!dim || !qty) { showToast('Preencha dimensão e quantidade!', 'error'); return; }
   
-  const id = `OP-${String(appState.nextOrdemId++).padStart(3,'0')}`;
-  appState.configs.nextOrdemId = appState.nextOrdemId;
+  // Validar que o SKU existe no catálogo
+  const skuExists = appState.skus.some(s => s.code === sku);
+  if (!skuExists) { showToast('SKU não encontrado no catálogo!', 'error'); return; }
   
-  DB.saveOrdem({ id, sku, dim, qty, cliente, entrega, status: 'pending', lote: null });
-  DB.saveConfig(appState.configs);
+  // Formatar o ID: adicionar prefixo OP- se o usuário não colocou
+  const id = rawId.toUpperCase().startsWith('OP-') ? rawId.toUpperCase() : `OP-${rawId}`;
+  
+  // Verificar duplicata
+  if (appState.ordens.some(o => o.id === id)) { showToast(`Ordem ${id} já existe!`, 'error'); return; }
+  
+  const novaOrdem = { id, sku, dim, qty, cliente, entrega, status: 'pending', lote: null };
+  appState.ordens.push(novaOrdem);
+  DB.saveOrdem(novaOrdem);
   
   closeModal();
   showToast(`Ordem ${id} criada!`, 'success');
@@ -147,9 +165,15 @@ function _salvarOrdem() {
 function _criarLote() {
   const sel = [...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id);
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
-  const id = `LT-${String(appState.configs.nextLoteId).padStart(3,'0')}`;
-  appState.configs.nextLoteId++;
-  DB.saveConfig(appState.configs);
+  
+  // Solicitar número do lote ao usuário
+  const userLoteId = prompt('Digite o número/nome do lote:');
+  if (!userLoteId || !userLoteId.trim()) { showToast('Número do lote é obrigatório!', 'error'); return; }
+  
+  const id = userLoteId.trim();
+  
+  // Verificar duplicata
+  if (appState.lotes.some(l => l.id === id)) { showToast(`Lote "${id}" já existe!`, 'error'); return; }
 
   const skus = [...new Set(sel.map(oid => appState.ordens.find(o => o.id === oid)?.sku).filter(Boolean))];
   if (!skus.length) { showToast('Erro ao identificar SKUs!', 'error'); return; }

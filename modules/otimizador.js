@@ -172,6 +172,30 @@ function _calcOtimizacao() {
     }
   });
 
+  // ── VALIDAÇÃO DE UNIDADES (guardrail mm vs m) ──
+  // Peças devem estar em milímetros (valores típicos: 500–6000).
+  // Se alguma peça tem dim < 100, provavelmente está em metros → corrigir.
+  allPieces.forEach(pc => {
+    if (pc.dim > 0 && pc.dim < 100) {
+      console.warn(`[OTIM] Peça ${pc.op} dim=${pc.dim} parece estar em METROS. Convertendo para mm (*1000).`);
+      pc.dim = Math.round(pc.dim * 1000);
+    }
+  });
+
+  // Validar dimensões das barras nos SKUs também
+  const skuCodes = [...new Set(allPieces.map(p => p.sku))];
+  skuCodes.forEach(skuCode => {
+    const sObj = appState.skus.find(x => x.code === skuCode);
+    if (sObj && sObj.dims) {
+      sObj.dims.forEach(d => {
+        if (d.dim > 0 && d.dim < 100) {
+          console.warn(`[OTIM] Barra SKU ${skuCode} dim=${d.dim} parece estar em METROS. Convertendo para mm (*1000).`);
+          d.dim = Math.round(d.dim * 1000);
+        }
+      });
+    }
+  });
+
   // 2. Agrupar por SKU
   const skuGroups = {};
   allPieces.forEach(pc => {
@@ -188,7 +212,14 @@ function _calcOtimizacao() {
     const remaining = pieces.map((pc, idx) => ({ ...pc, _idx: idx })); // Peças pendentes
 
     const sObj = appState.skus.find(x => x.code === sku);
+    // Guardrail min_sobra: se < 10, provavelmente em metros
+    if (sObj && sObj.min_sobra !== undefined && sObj.min_sobra > 0 && sObj.min_sobra < 10) {
+      console.warn(`[OTIM] SKU ${sku} min_sobra=${sObj.min_sobra} parece estar em METROS. Convertendo para mm (*1000).`);
+      sObj.min_sobra = Math.round(sObj.min_sobra * 1000);
+    }
     const skuMinSobra = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
+    
+    console.log(`[OTIM] SKU=${sku}: ${remaining.length} peça(s), dim maior=${remaining[0]?.dim}mm, minSobra=${skuMinSobra}mm, barras=${sObj?.dims?.map(d=>`${d.dim}mm(qty:${d.qty})`).join(', ') || 'N/A'}`);
 
     // ── FASE 1: Scrap-First — Tentar usar retalhos existentes ──
     const scraps = (appState.sobras || [])
