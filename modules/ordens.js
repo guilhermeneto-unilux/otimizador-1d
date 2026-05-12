@@ -127,13 +127,18 @@ function _novaOrdemModal() {
 
 function _salvarOrdem() {
   const sku     = document.getElementById('opSku').value;
-  const dim     = parseFloat(document.getElementById('opDim').value.replace(',', '.'));
+  const dim     = Math.round(parseFloat(document.getElementById('opDim').value.replace(',', '.')) * 1000);
   const qty     = parseInt(document.getElementById('opQty').value);
   const cliente = document.getElementById('opCliente').value || 'Geral';
   const entrega = document.getElementById('opEntrega').value || new Date().toISOString().split('T')[0];
   if (!dim || !qty) { showToast('Preencha dimensão e quantidade!', 'error'); return; }
-  const id = `OP-${String(appState.ordens.length + 1).padStart(3,'0')}`;
+  
+  const id = `OP-${String(appState.nextOrdemId++).padStart(3,'0')}`;
+  appState.configs.nextOrdemId = appState.nextOrdemId;
+  
   DB.saveOrdem({ id, sku, dim, qty, cliente, entrega, status: 'pending', lote: null });
+  DB.saveConfig(appState.configs);
+  
   closeModal();
   showToast(`Ordem ${id} criada!`, 'success');
   renderOrdens(); updateBadges();
@@ -299,7 +304,8 @@ async function _handleExcelUpload(e) {
         // 0: MRP, 1: OP, 2: Qtd, 3: Nr Pedido, 4: Nr Ped Cli, 5: SKU, 6: Etiqueta, 7: Subclasse, 8: Entrega, 9: Obs, 10: Dim
         const rawQty = parseInt(r[2], 10);
         const rawSku = String(r[5] || '').trim();
-        const rawDim = parseFloat(String(r[10]).replace(',', '.'));
+        // Converte Largura (m) da Planilha para milímetros (int)
+        const rawDim = Math.round(parseFloat(String(r[10]).replace(',', '.')) * 1000);
 
         // Validação: só importa linhas que tiverem número em Largura e Quantidade, e algum Sku
         if (isNaN(rawDim) || isNaN(rawQty) || rawDim <= 0 || rawQty <= 0 || !rawSku) {

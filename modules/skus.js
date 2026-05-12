@@ -104,7 +104,7 @@ function _getSkuFormHtml(sku = null) {
     </div>
     <div class="form-group">
       <label class="form-label">Sobra Mínima para Guarda (m) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
-      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? sku.min_sobra : 1.0}">
+      <input type="number" class="form-control" id="skMinSobra" value="${sku && sku.min_sobra !== undefined ? (sku.min_sobra / 1000) : 1.0}">
     </div>
 
     <div style="margin:24px 0 16px; border-bottom:1px solid var(--border);">
@@ -115,7 +115,7 @@ function _getSkuFormHtml(sku = null) {
     <div style="display:flex; gap:16px;">
       <div class="form-group" style="flex:1;">
         <label class="form-label">Comprimento 1 (m)</label>
-        <input type="number" class="form-control" id="skDim1" value="${d1.dim}" placeholder="Ex: 6.000">
+        <input type="number" class="form-control" id="skDim1" value="${d1.dim ? (d1.dim / 1000) : ''}" placeholder="Ex: 6.000">
       </div>
       <div class="form-group" style="flex:1;">
         <label class="form-label">Qtd Barras 1</label>
@@ -127,7 +127,7 @@ function _getSkuFormHtml(sku = null) {
     <div style="display:flex; gap:16px;">
       <div class="form-group" style="flex:1;">
         <label class="form-label">Comprimento 2 (m) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
-        <input type="number" step="0.001" class="form-control" id="skDim2" value="${d2.dim}">
+        <input type="number" step="0.001" class="form-control" id="skDim2" value="${d2.dim ? (d2.dim / 1000) : ''}">
       </div>
       <div class="form-group" style="flex:1;">
         <label class="form-label">Qtd Barras 2</label>
@@ -139,7 +139,7 @@ function _getSkuFormHtml(sku = null) {
     <div style="display:flex; gap:16px; margin-bottom:0;">
       <div class="form-group" style="flex:1;">
         <label class="form-label">Comprimento 3 (m) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
-        <input type="number" step="0.001" class="form-control" id="skDim3" value="${d3.dim}">
+        <input type="number" step="0.001" class="form-control" id="skDim3" value="${d3.dim ? (d3.dim / 1000) : ''}">
       </div>
       <div class="form-group" style="flex:1;">
         <label class="form-label">Qtd Barras 3</label>
@@ -152,13 +152,14 @@ function _getSkuFormHtml(sku = null) {
 function _extractDimsFromForm() {
   const dims = [];
   for (let i=1; i<=3; i++) {
-    const d = parseFloat(document.getElementById('skDim'+i).value);
+    const val = document.getElementById('skDim'+i).value;
+    const d = Math.round(parseFloat(val.replace(',', '.')) * 1000);
     const q = parseInt(document.getElementById('skQty'+i).value);
     if (!isNaN(d) && d > 0 && !isNaN(q) && q >= 0) {
       dims.push({ dim: d, qty: q });
     }
   }
-  return dims; // Ordena de forma decrescente para otimizador favorecer o maior? O Otimizador decide.
+  return dims; 
 }
 
 function _newSkuModal() {
@@ -175,7 +176,9 @@ async function _salvarSku() {
   const desc = document.getElementById('skDesc').value.trim();
   const short_desc = document.getElementById('skShortDesc').value.trim();
   const folder = document.getElementById('skFolder').value.trim();
-  const minSobra = parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) || 1.0;
+  
+  // Converte Metros para Milímetros (int)
+  const minSobra = Math.round(parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) * 1000) || 1000;
   
   if (!code || !desc) { showToast('Preencha código e descrição!', 'error'); return; }
   if (appState.skus.some(s => s.code === code)) { showToast('SKU já existe!', 'error'); return; }
@@ -222,7 +225,9 @@ async function _saveEditSku(id) {
     s.desc = document.getElementById('skDesc').value.trim();
     s.short_desc = document.getElementById('skShortDesc').value.trim();
     s.folder = document.getElementById('skFolder').value.trim();
-    s.min_sobra = parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) || 1.0;
+    
+    // Converte Metros para Milímetros (int)
+    s.min_sobra = Math.round(parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) * 1000) || 1000;
     
     const dims = _extractDimsFromForm();
     if (dims.length === 0) { showToast('Cadastre ao menos 1 comprimento!', 'error'); return; }

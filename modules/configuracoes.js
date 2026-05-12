@@ -13,7 +13,7 @@ function renderConfiguracoes() {
       
       <div class="form-group">
         <label class="form-label">Esquadrejamento / Refile Inicial (m)</label>
-        <input type="number" id="cfgTrim" class="form-control" value="${c.trim_m}" placeholder="Ex: 0.04">
+        <input type="number" id="cfgTrim" class="form-control" value="${c.trim_m / 1000}" placeholder="Ex: 0.04">
         <div class="form-hint">Tamanho descartado das pontas de qualquer barra virgem ou sobra antes do corte.</div>
       </div>
       
@@ -29,9 +29,15 @@ function renderConfiguracoes() {
 }
 
 function _salvarConfig() {
-  const trim = parseFloat(document.getElementById('cfgTrim').value) || 0;
+  const trimInput = document.getElementById('cfgTrim').value;
+  const trim = Math.round(parseFloat(trimInput.replace(',', '.')) * 1000) || 0;
   const scrap = parseInt(document.getElementById('cfgScrap').value) || 0;
-  appState.configs = { trim_m: trim, scrap_penalty_pct: scrap };
+  
+  // Update properties individually to preserve counters and other keys
+  if (!appState.configs) appState.configs = {};
+  appState.configs.trim_m = trim;
+  appState.configs.scrap_penalty_pct = scrap;
+  
   DB.saveConfig(appState.configs);
   showToast('Configurações salvas!', 'success');
 }

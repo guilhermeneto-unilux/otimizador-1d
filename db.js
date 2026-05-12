@@ -86,7 +86,16 @@ const DB = {
         if (!appState.configs) appState.configs = {};
         if (!appState.configs.nextLoteId)  appState.configs.nextLoteId = 1;
         if (!appState.configs.nextSobraId) appState.configs.nextSobraId = 1;
+        if (!appState.configs.nextOrdemId) appState.configs.nextOrdemId = 1;
         if (!appState.configs.nextImportOpId) appState.configs.nextImportOpId = 1;
+        if (!appState.configs.nextPlanId)  appState.configs.nextPlanId = 1;
+
+        // Sync local counters with config counters to avoid reset on refresh
+        appState.nextLoteId = appState.configs.nextLoteId;
+        appState.nextSobraId = appState.configs.nextSobraId;
+        appState.nextOrdemId = appState.configs.nextOrdemId;
+        appState.nextImportOpId = appState.configs.nextImportOpId;
+        appState.nextPlanoId = appState.configs.nextPlanId;
 
         this._updateStatusUI('Database Ativo');
 

@@ -181,9 +181,9 @@ function _clickWmsSlot(endereco, isOccupied) {
               </option>`;
             }).join('')}
           </select>
-          <div class="form-hint">O cupados aparecem desabilitados. Selecione um espaço livre.</div>
+          <div class="form-hint">Ocupados aparecem desabilitados. Selecione um espaço livre.</div>
         </div>
-        <div clas           <div class="form-group">
+        <div class="form-group">
              <label class="form-label">SKU (Pesquise por código ou nome)</label>
              <div style="position:relative;">
                <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" 
@@ -195,12 +195,10 @@ function _clickWmsSlot(endereco, isOccupied) {
                  ${appState.skus.map(sk => `<div class="sku-option" style="padding:10px 12px; border-bottom:1px solid #f3f4f6; cursor:pointer;" onclick="_selectSku('${sk.code}', '${sk.desc.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><strong>${sk.code}</strong><br><span style="color:#6b7280; font-size:12px;">${sk.desc}</span></div>`).join('')}
                </div>
              </div>
-           </div>>
-           </div>
-           <div class="form-group">
+        </div>
+        <div class="form-group">
              <label class="form-label">Medida (m)</label>
              <input type="number" step="0.001" class="form-control" id="soMed">
-           </div>
         </div>
       `,
       `
@@ -217,7 +215,7 @@ function _clickWmsSlot(endereco, isOccupied) {
   }
 }
 
-function _salvarSobra(btnEl) {
+async function _salvarSobra(btnEl) {
   if (btnEl) {
     btnEl.dataset.originalText = btnEl.textContent;
     btnEl.disabled = true;
@@ -235,7 +233,9 @@ function _salvarSobra(btnEl) {
 
   const skuVal = elSkuInput.value.trim();
   const skuPart = skuVal.includes(' - ') ? skuVal.split(' - ')[0].trim() : skuVal;
-  const med = parseFloat(elMed.value.replace(',', '.'));
+  
+  // Converte Metros (input) para Milímetros (DB)
+  const med = Math.round(parseFloat(elMed.value.replace(',', '.')) * 1000);
   const endereco = elEnd.value;
   
   if (!skuVal || !med || !endereco) { 
@@ -271,12 +271,31 @@ function _salvarSobra(btnEl) {
     endereco 
   };
   
-  appState.sobras.push(novaSobra);
-  DB.saveSobra(novaSobra);
-  DB.log("Cadastrou Sobra Manual", "unilux_sobras", `${novaSobra.sku} em ${endereco}`);
+  try {
+    appState.sobras.push(novaSobra);
+    
+    // Atualiza o contador no configs para persistência
+    appState.configs.nextSobraId = appState.nextSobraId;
+    
+    // Salva a sobra e as configurações (novo contador)
+    await Promise.all([
+      DB.saveSobra(novaSobra),
+      DB.saveConfig(appState.configs)
+    ]);
+
+    DB.log("Cadastrou Sobra Manual", "unilux_sobras", `${novaSobra.sku} em ${endereco}`);
+    
+    closeModal(); 
+    showToast(`Sobra física alocada em ${endereco}`, 'success');
+  } catch (err) {
+    console.error('Erro ao salvar sobra:', err);
+    showToast('Erro ao salvar no banco de dados. Verifique sua conexão.', 'error');
+    // Remove da memória se falhou no banco
+    appState.sobras = appState.sobras.filter(s => s.id !== novaSobra.id);
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
+    return;
+  }
   
-  closeModal(); 
-  showToast(`Sobra física alocada em ${endereco}`, 'success');
   renderSobras(); updateBadges();
 }
 

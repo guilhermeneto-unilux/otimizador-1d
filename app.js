@@ -5,15 +5,15 @@
 // ─── MOCK DATA (seeded via "Criar Dados de Teste") ──────────────
 const APP_MOCK = {
   skus: [
-    { id:'S01', code:'PER-40X40', desc:'Perfil Quadrado 40×40',   dims: [{dim: 6.0, qty: 40}] },
-    { id:'S02', code:'PER-50X30', desc:'Perfil Retangular 50×30', dims: [{dim: 6.0, qty: 25}] },
-    { id:'S03', code:'PER-20X20', desc:'Perfil Quadrado 20×20',   dims: [{dim: 3.0, qty: 60}] },
-    { id:'S04', code:'TUBO-60X2', desc:'Tubo Redondo 60×2',       dims: [{dim: 6.0, qty: 15}] },
-    { id:'S05', code:'CAN-25X25', desc:'Cantoneira 25×25',        dims: [{dim: 6.0, qty: 8}] },
+    { id:'S01', code:'PER-40X40', desc:'Perfil Quadrado 40×40',   dims: [{dim: 6000, qty: 40}] },
+    { id:'S02', code:'PER-50X30', desc:'Perfil Retangular 50×30', dims: [{dim: 6000, qty: 25}] },
+    { id:'S03', code:'PER-20X20', desc:'Perfil Quadrado 20×20',   dims: [{dim: 3000, qty: 60}] },
+    { id:'S04', code:'TUBO-60X2', desc:'Tubo Redondo 60×2',       dims: [{dim: 6000, qty: 15}] },
+    { id:'S05', code:'CAN-25X25', desc:'Cantoneira 25×25',        dims: [{dim: 6000, qty: 8}] },
   ],
   // Barras movidas para dentro de skus.dims
   ordens: [
-    { id:'OP-001', sku:'PER-40X40', dim:1.2, qty:8,  entrega:'2026-04-15', cliente:'Metalfab Ltda',     status:'pending', lote:null },
+    { id:'OP-001', sku:'PER-40X40', dim:1200, qty:8,  entrega:'2026-04-15', cliente:'Metalfab Ltda',     status:'pending', lote:null },
     { id:'OP-002', sku:'PER-50X30', dim:850,  qty:12, entrega:'2026-04-16', cliente:'Estrutura Tech',    status:'pending', lote:null },
     { id:'OP-003', sku:'PER-20X20', dim:500,  qty:20, entrega:'2026-04-14', cliente:'Construção Rápida', status:'pending', lote:null },
   ],
@@ -48,14 +48,14 @@ function formatDate(iso) {
 }
 function getSkuDim(code) {
   const s = appState.skus.find(x => x.code === code);
-  return 6.0; // Returns the largest standard bar initially
+  return 6000; // Returns the largest standard bar initially in mm
 }
 
 // ─── FORMATTING UTILITIES ───────────────────────────────────────
 function fmtM(val) {
   if (val === undefined || val === null || isNaN(val)) return '0,000 m';
-  // Formata com 3 casas decimais e troca ponto por vírgula para padrão brasileiro
-  return parseFloat(val).toFixed(3).replace('.', ',') + ' m';
+  // Converte milímetros (DB) para metros (UI) e formata com 3 casas decimais
+  return (parseFloat(val) / 1000).toFixed(3).replace('.', ',') + ' m';
 }
 
 // ─── ROUTER ─────────────────────────────────────────────────────
