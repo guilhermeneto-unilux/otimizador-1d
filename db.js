@@ -14,6 +14,7 @@ const appState = {
   users: [], audit: [],
   nextLoteId: 1, nextSobraId: 1, nextPlanoId: 1,
   configs: { trim_m: 0, scrap_penalty_pct: 0 },
+  filters: { ordens: '', skus: '', sobras: '' },
   currentUser: null
 };
 

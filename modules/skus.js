@@ -2,8 +2,16 @@
 
 function renderSkus() {
   const content = document.getElementById('contentArea');
+  const q       = (appState.filters.skus || '').toLowerCase();
   
-  const rows = appState.skus.map(s => {
+  const filteredRows = appState.skus.filter(s => {
+    if (!q) return true;
+    return s.code.toLowerCase().includes(q) || 
+           s.desc.toLowerCase().includes(q) || 
+           (s.short_desc || '').toLowerCase().includes(q);
+  });
+
+  const rows = filteredRows.map(s => {
     const sc = skuColor(s.code);
     
     // Calcula o total de barras em estoque desse SKU
@@ -55,7 +63,19 @@ function renderSkus() {
       </button>
     </div>
 
-    <div class="tbl-wrap" style="margin-top:24px;">
+    <!-- BARRA DE BUSCA -->
+    <div class="search-bar-card" style="margin-top:24px;">
+      <div class="search-input-group">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="form-control" 
+               placeholder="Pesquisar por Código ou Descrição do Perfil..." 
+               value="${appState.filters.skus}" 
+               oninput="appState.filters.skus = this.value; renderSkus()">
+      </div>
+      ${q ? `<span class="search-results-stats">${filteredRows.length} resultados</span>` : ''}
+    </div>
+
+    <div class="tbl-wrap" style="margin-top:16px;">
       <table class="tbl">
         <thead>
           <tr>

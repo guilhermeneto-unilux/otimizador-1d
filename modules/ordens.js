@@ -2,8 +2,21 @@
 
 function renderOrdens() {
   const tab      = appState._ordensTab || 'pending';
+  const q        = (appState.filters.ordens || '').toLowerCase();
+  
   const pending  = appState.ordens.filter(o => o.status === 'pending');
   const inBatch  = appState.ordens.filter(o => o.status === 'in_batch');
+
+  const activeList = tab === 'pending' ? pending : inBatch;
+  const filtered = activeList.filter(o => {
+    if (!q) return true;
+    const matchId = o.id.toLowerCase().includes(q);
+    const matchSku = o.sku.toLowerCase().includes(q);
+    const matchCliente = (o.cliente || '').toLowerCase().includes(q);
+    const matchEntrega = _fmtDate(o.entrega).toLowerCase().includes(q);
+    const matchPedido = (o._meta?.pedido || '').toString().toLowerCase().includes(q);
+    return matchId || matchSku || matchCliente || matchEntrega || matchPedido;
+  });
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
@@ -31,7 +44,7 @@ function renderOrdens() {
       </div>
     </div>
 
-    <div class="tabs">
+    <div class="tabs" style="margin-bottom:0; border-bottom:0; border-radius:8px 8px 0 0;">
       <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length})</span>
       <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length})</span>
       ${tab === 'batch' && inBatch.length > 0 
@@ -40,6 +53,18 @@ function renderOrdens() {
             Reverter Tudo para Pendente
            </button>` 
         : ''}
+    </div>
+
+    <!-- BARRA DE BUSCA -->
+    <div class="search-bar-card" style="border-top:0; border-radius:0 0 8px 8px; margin-bottom:24px;">
+      <div class="search-input-group">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="form-control" 
+               placeholder="Pesquisar por OP, Cliente, Pedido ou Data..." 
+               value="${appState.filters.ordens}" 
+               oninput="appState.filters.ordens = this.value; renderOrdens()">
+      </div>
+      ${q ? `<span class="search-results-stats">${filtered.length} resultados</span>` : ''}
     </div>
 
     <div class="tbl-wrap">
@@ -51,7 +76,7 @@ function renderOrdens() {
           </tr>
         </thead>
         <tbody>
-          ${_ordensRows(tab === 'pending' ? pending : inBatch)}
+          ${_ordensRows(filtered)}
         </tbody>
       </table>
     </div>

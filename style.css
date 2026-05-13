@@ -300,6 +300,47 @@ a { text-decoration: none; color: inherit; }
 .form-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* ================================================================
+   SEARCH BARS
+   ================================================================ */
+.search-bar-card {
+  background: var(--white);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  box-shadow: var(--shadow);
+}
+.search-input-group {
+  position: relative;
+  flex: 1;
+}
+.search-input-group svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-400);
+  pointer-events: none;
+}
+.search-input-group .form-control {
+  padding-left: 36px;
+  height: 40px;
+  font-size: 14px;
+  border-color: var(--border-dark);
+}
+.search-input-group .form-control:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.search-results-stats {
+  font-size: 12px;
+  color: var(--text-500);
+  font-weight: 600;
+}
+
+/* ================================================================
    MODAL
    ================================================================ */
 .modal-overlay {
