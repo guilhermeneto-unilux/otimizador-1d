@@ -246,6 +246,16 @@ const DB = {
     if (!supabaseClient) return;
     await supabaseClient.from('unilux_lotes').delete().eq('id', id);
   },
+  async getLote(id) {
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.from('unilux_lotes').select('*').eq('id', id).single();
+    if (error) { console.error('Erro ao buscar lote:', error); return null; }
+    return data;
+  },
+  async deleteHistoricoByLote(loteId) {
+    if (!supabaseClient) return;
+    await supabaseClient.from('unilux_historico').delete().eq('lote_id', loteId);
+  },
 
   async log(action, target_table, details = '') {
     if (!supabaseClient || !appState.currentUser) return;

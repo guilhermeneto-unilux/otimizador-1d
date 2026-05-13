@@ -80,6 +80,10 @@ function _planosFinalizadosRows(planos) {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar Excel
           </button>
+          <button class="btn btn-white btn-sm" style="background:#fff1f2; border-color:#fecdd3; color:#e11d48;" onclick="_reverterPlanoParaLote('${p.id}')" title="Desfazer Aprovação e voltar para Lote">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Reverter para Lote
+          </button>
           <button class="btn btn-white btn-sm" onclick="_verPlanoMapa('${p.id}')">Ver Mapa</button>
         </div>
       </td>
@@ -384,5 +388,88 @@ function _renderBarResult(bin, idx) {
       </div>
     </div>
   `;
+}
+
+async function _reverterPlanoParaLote(planoId) {
+  if (!confirm(`Deseja realmente reverter o plano ${planoId}?\n\nIsso devolverá o material ao estoque e transformará o plano de volta em um lote pendente.`)) return;
+
+  const plano = appState.planos.find(p => p.id === planoId);
+  if (!plano) { showToast('Plano não encontrado!', 'error'); return; }
+
+  const loteId = plano.loteId;
+  showToast('Revertendo plano... aguarde', 'info');
+
+  try {
+    // 1. Restaurar Estoque e Retalhos
+    const skusAffected = new Set();
+    for (const bin of plano.mapa) {
+      if (bin.type === 'virgin') {
+        const [skCode, dStr] = bin.srcId.split('|');
+        const dim = parseFloat(dStr);
+        const skuObj = appState.skus.find(x => x.code === skCode);
+        if (skuObj && skuObj.dims) {
+          const dimEntry = skuObj.dims.find(d => d.dim === dim);
+          if (dimEntry) {
+            dimEntry.qty++;
+            skusAffected.add(skuObj);
+          }
+        }
+      } else if (bin.type === 'scrap') {
+        const novaSobra = { 
+          id: bin.srcId, 
+          sku: bin.sku, 
+          medida: bin.len, 
+          criacao: new Date().toISOString().split('T')[0], 
+          origem: 'Reversão ' + loteId, 
+          endereco: bin.srcAddr || ''
+        };
+        // Verificar se já não voltou (prevenção de duplicata)
+        if (!appState.sobras.some(s => s.id === bin.srcId)) {
+          appState.sobras.push(novaSobra);
+          await DB.saveSobra(novaSobra);
+        }
+      }
+    }
+    for (const s of skusAffected) await DB.saveSku(s);
+
+    // 2. Restaurar Lote e Ordens
+    const loteData = await DB.getLote(loteId);
+    if (loteData) {
+      loteData.status = 'pending';
+      await DB.saveLote(loteData);
+      
+      // Adicionar de volta ao appState.lotes se não estiver lá
+      if (!appState.lotes.some(l => l.id === loteId)) {
+        appState.lotes.push(loteData);
+      }
+
+      // Atualizar Ordens
+      for (const oid of loteData.ordens) {
+        const o = appState.ordens.find(x => x.id === oid);
+        if (o) {
+          o.status = 'in_batch';
+          o.lote = loteId;
+          await DB.saveOrdem(o);
+        }
+      }
+    }
+
+    // 3. Remover Plano e Histórico
+    appState.planos = appState.planos.filter(p => p.id !== planoId);
+    await DB.savePlanosAll();
+    
+    appState.historico = appState.historico.filter(h => h.lote_id !== loteId);
+    await DB.deleteHistoricoByLote(loteId);
+    
+    await DB.log("Reverteu Plano", "unilux_configs", `Plano ${planoId} (Lote ${loteId}) revertido para pendente`);
+
+    showToast(`Plano ${planoId} revertido com sucesso!`, 'success');
+    renderPlanos();
+    updateBadges();
+
+  } catch (err) {
+    console.error('Erro na reversão:', err);
+    showToast('Erro ao reverter o plano. Verifique o console.', 'error');
+  }
 }
 
