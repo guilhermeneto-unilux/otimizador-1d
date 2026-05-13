@@ -130,7 +130,8 @@ function _startOtimizacao() {
           `;
         }
       } else {
-        showToast('Erro durante a otimização. Verifique os dados.', 'error');
+        showToast('Erro durante a otimização: ' + e.message, 'error');
+        console.error('Detalhes completos do erro:', e);
         if (area) {
           area.innerHTML = `
             <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
@@ -265,7 +266,7 @@ function _calcOtimizacao() {
       const largestPiece = remaining[0]; // Já está ordenado decrescente
 
       // Encontrar a melhor barra virgem para este grupo de peças
-      const chosenDim = _chooseBestBar(sObj, largestPiece.dim, remaining, cfgTrim, skuMinSobra);
+      const chosenDim = _chooseBestBar(sObj, largestPiece.dim, remaining, cfgTrim, skuMinSobra, cfgPen);
       const uLen = chosenDim - cfgTrim;
 
       // Empacotar o máximo de peças nesta barra
@@ -337,7 +338,7 @@ function _removePacked(remaining, packedIdxs) {
      Estratégia: testar TODOS os tamanhos de barra disponíveis,
      simular o empacotamento em cada um, e escolher a que gera
      o menor desperdício total (ou melhor sobra reutilizável). */
-function _chooseBestBar(sObj, minDim, remaining, cfgTrim, skuMinSobra) {
+function _chooseBestBar(sObj, minDim, remaining, cfgTrim, skuMinSobra, cfgPen) {
   if (!sObj || !sObj.dims || sObj.dims.length === 0) return 6000;
 
   const validBars = sObj.dims
