@@ -310,22 +310,40 @@ function _verPlanoMapa(planoId) {
   const plano = appState.planos.find(p => p.id === planoId);
   if (!plano) return;
 
-  // Agrupar por SKU para contagem de barras
-  const skuCounts = {};
-  plano.mapa.forEach(bin => {
-    skuCounts[bin.sku] = (skuCounts[bin.sku] || 0) + 1;
+  // Separar barras virgens de retalhos
+  const virginPlans = plano.mapa.filter(p => p.type === 'virgin');
+  const scrapPlans  = plano.mapa.filter(p => p.type === 'scrap');
+
+  // Resumo de Barras Virgens
+  const virginSkuCounts = {};
+  virginPlans.forEach(p => {
+    virginSkuCounts[p.sku] = (virginSkuCounts[p.sku] || 0) + 1;
   });
 
-  const summaryHtml = Object.entries(skuCounts).map(([sku, count]) => {
+  const virginSummaryHtml = Object.entries(virginSkuCounts).map(([sku, count]) => {
     const sObj = appState.skus.find(s => s.code === sku);
     const name = sObj ? (sObj.short_desc || sObj.desc) : sku;
-    return `<div style="font-size:13px; margin-bottom:4px;">• ${sku} (${name}): <b>${count} barras</b></div>`;
+    return `<div style="font-size:13px; margin-bottom:4px;">• ${sku} (${name}): <b>${count} barras inteiras</b></div>`;
+  }).join('');
+
+  // Resumo de Retalhos em Uso
+  const scrapSummaryHtml = scrapPlans.map(p => {
+    const sObj = appState.skus.find(s => s.code === p.sku);
+    const name = sObj ? (sObj.short_desc || sObj.desc) : p.sku;
+    return `<div style="font-size:13px; margin-bottom:4px;">• ${p.sku} (${fmtM(p.len)}): <b>Setor ${p.srcAddr || '—'}</b> <span style="color:var(--text-400); font-size:11px;">(ID: ${p.srcId})</span></div>`;
   }).join('');
 
   const html = `
-    <div style="margin-bottom:16px; padding:12px; background:var(--bg-100); border-radius:8px; border:1px solid var(--border);">
-      <div style="font-weight:700; font-size:12px; color:var(--text-400); text-transform:uppercase; margin-bottom:8px;">Resumo de Material (Abastecimento)</div>
-      ${summaryHtml}
+    <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+      <div style="padding:16px; background:var(--bg-100); border-radius:10px; border:1px solid var(--border);">
+        <div style="font-weight:800; font-size:11px; color:var(--text-500); text-transform:uppercase; margin-bottom:10px; letter-spacing:0.5px;">📦 Matéria-Prima (Barras Inteiras)</div>
+        ${virginSummaryHtml || '<div style="font-size:13px; color:var(--text-400);">Nenhuma barra virgem usada neste lote.</div>'}
+      </div>
+
+      <div style="padding:16px; background:#fff7ed; border-radius:10px; border:1px solid #fed7aa;">
+        <div style="font-weight:800; font-size:11px; color:#c2410c; text-transform:uppercase; margin-bottom:10px; letter-spacing:0.5px;">♻️ Retalhos Reutilizados (Abastecimento)</div>
+        ${scrapSummaryHtml || '<div style="font-size:13px; color:#c2410c; opacity:0.7;">Nenhum retalho reutilizado neste lote.</div>'}
+      </div>
     </div>
     <div style="margin-bottom:20px; font-size:14px; color:var(--text-400);">
       Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b>
@@ -345,7 +363,7 @@ function _renderBarResult(bin, idx) {
   return `
     <div class="res-item" style="padding:16px; border:1px solid var(--border); border-radius:12px; background:white;">
       <div class="res-item-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${fmtM(bin.len)}</span></span>
+        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${fmtM(bin.len)}</span> — ${bin.type === 'scrap' ? `<span style="color:#c2410c;">Retalho ${bin.srcId} (${bin.srcAddr || '—'})</span>` : 'Virgem'}</span>
         <span class="status-badge badge-approved">${aprov}% usado</span>
       </div>
       <div class="bar-viz" style="height:48px; background:var(--bg-200); border-radius:6px; display:flex; position:relative; overflow:hidden; border:1px solid var(--border);">

@@ -251,6 +251,7 @@ function _calcOtimizacao() {
         plans.push({
           type: 'scrap',
           srcId: scrap.id,
+          srcAddr: scrap.endereco || '',
           len: scrap.medida,
           usable: available,
           sku,
@@ -633,7 +634,7 @@ function _renderBarCard(p, idx, cfgTrim) {
       <div class="bar-result-header">
         <div>
           <span style="font-size:14px; font-weight:700;">Barra #${idx+1}</span>
-          <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} · ${fmtM(p.len)} · ${p.type === 'scrap' ? 'Retalho ' + p.srcId : 'Virgem'}</span>
+          <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} · ${fmtM(p.len)} · ${p.type === 'scrap' ? `Retalho ${p.srcId} ${p.srcAddr ? `(${p.srcAddr})` : ''}` : 'Virgem'}</span>
           ${sobraBadge}
         </div>
         <span class="status-badge ${parseFloat(effBar) >= 90 ? 'badge-approved' : parseFloat(effBar) >= 70 ? 'badge-batch' : 'badge-pending'}">${effBar}% aproveitamento</span>
