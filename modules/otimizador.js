@@ -258,6 +258,7 @@ function _calcOtimizacao() {
           pcs: packed.map(p => ({ op: p.op, sku: p.sku, dim: p.dim, entrega: p.entrega })),
           rem: waste
         });
+        console.log(`[OTIM] Usado retalho ${scrap.id} do setor ${scrap.endereco || '—'}`);
       }
     });
 
@@ -588,15 +589,17 @@ function _renderBarCard(p, idx, cfgTrim) {
 
   // Cores por OP dentro da barra
   const opColors = {};
-  let ci = 0;
-  p.pcs.forEach(pc => { if (!opColors[pc.op]) opColors[pc.op] = SEG_COLORS[ci++ % SEG_COLORS.length]; });
+  p.pcs.forEach(pc => { 
+    if (!opColors[pc.op]) opColors[pc.op] = '#3b82f6'; // Azul solicitado
+  });
 
   // Segmentos de peças
   const segs = p.pcs.map(pc => {
     const pct = (pc.dim / p.len * 100).toFixed(2);
     const bg = p.type === 'scrap' ? '#f59e0b' : opColors[pc.op];
-    return `<div class="bar-seg" style="width:${pct}%;background:${bg};" title="${pc.op}: ${fmtM(pc.dim)}">
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;">${pc.dim}</span>
+    return `<div class="bar-seg" style="width:${pct}%;background:${bg}; border-right: 2px solid #fff; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#fff;" title="${pc.op}: ${fmtM(pc.dim)}">
+      <span style="font-size:9px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${pc.op}</span>
+      <span style="font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${fmtM(pc.dim)}</span>
     </div>`;
   }).join('');
 
