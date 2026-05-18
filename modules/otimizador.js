@@ -562,8 +562,9 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
       const skuPlans = skuMap[sku];
       const skuBars = skuPlans.length;
       const skuPcs = skuPlans.reduce((s, x) => s + x.plan.pcs.length, 0);
+      const sObj = appState.skus.find(s => s.code === sku);
+      const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
       const skuSobras = skuPlans.filter(x => {
-        const sObj = appState.skus.find(s => s.code === sku);
         const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
         return x.plan.rem >= skuMin;
       }).length;
@@ -571,7 +572,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
       return `
         <div style="margin-bottom:20px;">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 16px; background:${sc.bg}22; border-radius:6px; border-left:4px solid ${sc.text};">
-            <span class="sku-tag" style="background:${sc.bg};color:${sc.text}; font-size:12px; padding:4px 10px;">${sku}</span>
+            <span class="sku-tag" style="background:${sc.bg};color:${sc.text}; font-size:12px; padding:4px 10px;">${sku} ${skuShortDesc ? `- ${skuShortDesc}` : ''}</span>
             <span style="font-size:12px; font-weight:600; color:var(--text-500);">${skuBars} barra(s) · ${skuPcs} peça(s)${skuSobras > 0 ? ` · <span style="color:#16a34a;">♻ ${skuSobras} sobra(s) gerada(s)</span>` : ''}</span>
           </div>
           ${skuPlans.map(({ plan: p, globalIdx: idx }) => _renderBarCard(p, idx, cfgTrim)).join('')}
@@ -632,12 +633,15 @@ function _renderBarCard(p, idx, cfgTrim) {
     ? `<span class="status-badge" style="background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0; margin-left:8px; animation: pulse-sobra 2s ease-in-out infinite;">♻ Gera Sobra ${fmtM(p.rem)} → Estoque</span>`
     : '';
 
+  const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
+  const addrText = p.srcAddr ? ` (Endereço: ${p.srcAddr})` : ' (Sem endereço)';
+
   return `
     <div class="bar-result-card" style="${geraSobra ? 'border-left:3px solid #22c55e; background:linear-gradient(90deg, #f0fdf4 0%, #fff 30%);' : ''}">
       <div class="bar-result-header">
         <div>
           <span style="font-size:14px; font-weight:700;">Barra #${idx+1}</span>
-          <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} · ${fmtM(p.len)} · ${p.type === 'scrap' ? `Retalho ${p.srcId} ${p.srcAddr ? `(${p.srcAddr})` : ''}` : 'Virgem'}</span>
+          <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} ${skuShortDesc ? `(${skuShortDesc})` : ''} · ${fmtM(p.len)} · ${p.type === 'scrap' ? `Retalho ${p.srcId}${addrText}` : 'Virgem'}</span>
           ${sobraBadge}
         </div>
         <span class="status-badge ${parseFloat(effBar) >= 90 ? 'badge-approved' : parseFloat(effBar) >= 70 ? 'badge-batch' : 'badge-pending'}">${effBar}% aproveitamento</span>

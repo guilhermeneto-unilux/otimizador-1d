@@ -364,10 +364,14 @@ function _renderBarResult(bin, idx) {
   const totalPcs = bin.pcs.reduce((sum, p) => sum + p.dim, 0);
   const aprov = ((totalPcs/bin.len)*100).toFixed(1);
 
+  const sObj = appState.skus.find(s => s.code === bin.sku);
+  const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
+  const addrText = bin.srcAddr ? ` (Endereço: ${bin.srcAddr})` : ' (Sem endereço)';
+
   return `
     <div class="res-item" style="padding:16px; border:1px solid var(--border); border-radius:12px; background:white;">
       <div class="res-item-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${fmtM(bin.len)}</span> — ${bin.type === 'scrap' ? `<span style="color:#c2410c;">Retalho ${bin.srcId} (${bin.srcAddr || '—'})</span>` : 'Virgem'}</span>
+        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${fmtM(bin.len)}</span> — ${bin.type === 'scrap' ? `<span style="color:#c2410c;">Retalho ${bin.srcId}${addrText}</span>` : 'Virgem'}</span>
         <span class="status-badge badge-approved">${aprov}% usado</span>
       </div>
       <div class="bar-viz" style="height:48px; background:var(--bg-200); border-radius:6px; display:flex; position:relative; overflow:hidden; border:1px solid var(--border);">
