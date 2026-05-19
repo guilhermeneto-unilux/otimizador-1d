@@ -269,7 +269,8 @@ function _calcOtimizacao() {
 
       // Encontrar a melhor barra virgem para este grupo de peças
       const chosenDim = _chooseBestBar(sObj, largestPiece.dim, remaining, cfgTrim, skuMinSobra, cfgPen);
-      const uLen = chosenDim - cfgTrim;
+      const effectiveLen = chosenDim - 50;
+      const uLen = effectiveLen - cfgTrim;
 
       // Empacotar o máximo de peças nesta barra
       const packed = _packPiecesIntoBin(remaining, uLen);
@@ -277,15 +278,16 @@ function _calcOtimizacao() {
       if (packed.length === 0) {
         // Fallback: peça que não cabe em nenhuma barra — forçar na maior disponível
         const biggestBar = _getBiggestBar(sObj) || 6000;
+        const effBiggest = biggestBar - 50;
         const pc = remaining.shift();
         plans.push({
           type: 'virgin',
           srcId: `${sku}|${biggestBar}`,
-          len: biggestBar,
-          usable: biggestBar - cfgTrim,
+          len: effBiggest,
+          usable: effBiggest - cfgTrim,
           sku,
           pcs: [{ op: pc.op, sku: pc.sku, dim: pc.dim, entrega: pc.entrega }],
-          rem: (biggestBar - cfgTrim) - pc.dim
+          rem: (effBiggest - cfgTrim) - pc.dim
         });
         continue;
       }
@@ -297,7 +299,7 @@ function _calcOtimizacao() {
       plans.push({
         type: 'virgin',
         srcId: `${sku}|${chosenDim}`,
-        len: chosenDim,
+        len: effectiveLen,
         usable: uLen,
         sku,
         pcs: packed.map(p => ({ op: p.op, sku: p.sku, dim: p.dim, entrega: p.entrega })),
@@ -344,7 +346,7 @@ function _chooseBestBar(sObj, minDim, remaining, cfgTrim, skuMinSobra, cfgPen) {
   if (!sObj || !sObj.dims || sObj.dims.length === 0) return 6000;
 
   const validBars = sObj.dims
-    .filter(d => d.qty > 0 && (d.dim - cfgTrim) >= minDim)
+    .filter(d => d.qty > 0 && ((d.dim - 50) - cfgTrim) >= minDim)
     .map(d => d.dim)
     .sort((a, b) => a - b); // Ascendente
 
@@ -358,7 +360,8 @@ function _chooseBestBar(sObj, minDim, remaining, cfgTrim, skuMinSobra, cfgPen) {
   let bestScore = -Infinity;
 
   validBars.forEach(barDim => {
-    const uLen = barDim - cfgTrim;
+    const uLen = (barDim - 50) - cfgTrim;
+    if (uLen <= 0) return;
     const packed = _packPiecesIntoBin(remaining, uLen);
     const usedLen = packed.reduce((s, pc) => s + pc.dim, 0);
     const waste = uLen - usedLen;
@@ -575,7 +578,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
             <span class="sku-tag" style="background:${sc.bg};color:${sc.text}; font-size:12px; padding:4px 10px;">${sku} ${skuShortDesc ? `- ${skuShortDesc}` : ''}</span>
             <span style="font-size:12px; font-weight:600; color:var(--text-500);">${skuBars} barra(s) · ${skuPcs} peça(s)${skuSobras > 0 ? ` · <span style="color:#16a34a;">♻ ${skuSobras} sobra(s) gerada(s)</span>` : ''}</span>
           </div>
-          ${skuPlans.map(({ plan: p, globalIdx: idx }) => _renderBarCard(p, idx, cfgTrim)).join('')}
+          ${skuPlans.map(({ plan: p }, localIdx) => _renderBarCard(p, localIdx, cfgTrim)).join('')}
         </div>
       `;
     }).join('')}

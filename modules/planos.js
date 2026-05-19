@@ -17,9 +17,15 @@ function renderPlanos() {
       
       <!-- SEÇÃO 1: Planos Finalizados -->
       <div>
-        <h2 style="font-size:16px; font-weight:700; margin-bottom:12px; color:var(--text-900);">Planos Finalizados</h2>
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
+          <h2 style="font-size:16px; font-weight:700; color:var(--text-900); margin:0;">Planos Finalizados</h2>
+          <div class="search-input-group" style="max-width:300px; width:100%;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" class="form-control" placeholder="Buscar por plano, lote ou SKU..." onkeyup="_filtrarPlanos(this.value)">
+          </div>
+        </div>
         <div class="tbl-wrap">
-          <table class="tbl">
+          <table class="tbl" id="tblPlanosFin">
             <thead>
               <tr>
                 <th>ID Plano</th>
@@ -321,13 +327,15 @@ function _verPlanoMapa(planoId) {
   // Resumo de Barras Virgens
   const virginSkuCounts = {};
   virginPlans.forEach(p => {
-    virginSkuCounts[p.sku] = (virginSkuCounts[p.sku] || 0) + 1;
+    if (!virginSkuCounts[p.sku]) virginSkuCounts[p.sku] = { count: 0, length: 0 };
+    virginSkuCounts[p.sku].count++;
+    virginSkuCounts[p.sku].length += p.len;
   });
 
-  const virginSummaryHtml = Object.entries(virginSkuCounts).map(([sku, count]) => {
+  const virginSummaryHtml = Object.entries(virginSkuCounts).map(([sku, data]) => {
     const sObj = appState.skus.find(s => s.code === sku);
     const name = sObj ? (sObj.short_desc || sObj.desc) : sku;
-    return `<div style="font-size:13px; margin-bottom:4px;">• ${sku} (${name}): <b>${count} barras inteiras</b></div>`;
+    return `<div style="font-size:13px; margin-bottom:4px;">• ${sku} (${name}): <b>${data.count} barras inteiras</b> <span style="color:var(--text-400); font-size:12px;">(${fmtM(data.length)} total)</span></div>`;
   }).join('');
 
   // Resumo de Retalhos em Uso
@@ -353,11 +361,24 @@ function _verPlanoMapa(planoId) {
       Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b>
     </div>
     <div id="modalMapaContent" style="display:flex; flex-direction:column; gap:16px; max-height:60vh; overflow-y:auto; padding-right:8px;">
-      ${plano.mapa.map((bin, idx) => _renderBarResult(bin, idx)).join('')}
+      ${(() => {
+        const c = {};
+        return plano.mapa.map(bin => {
+          if (c[bin.sku] === undefined) c[bin.sku] = 0;
+          return _renderBarResult(bin, c[bin.sku]++);
+        }).join('');
+      })()}
     </div>
   `;
 
   openModal(`Mapa do Plano: ${plano.id}`, html);
+}
+
+function _filtrarPlanos(val) {
+  const q = val.toLowerCase();
+  document.querySelectorAll('#tblPlanosFin tbody tr').forEach(tr => {
+    tr.style.display = (tr.textContent.toLowerCase().includes(q) ? '' : 'none');
+  });
 }
 
 function _renderBarResult(bin, idx) {
