@@ -3,17 +3,38 @@
 const WMS_QUADS = [
   { id: 'VERDE',    name: 'Verde',    bg: '#22c55e', text: '#fff', rows: 11, cols: 11 },
   { id: 'ROXO',     name: 'Roxo',     bg: '#8b5cf6', text: '#fff', rows: 11, cols: 11 },
-  { id: 'AZUL',     name: 'Azul',     bg: '#3b82f6', text: '#fff', rows: 11, cols: 11 },
-  { id: 'PRETO',    name: 'Preto',    bg: '#111827', text: '#fff', rows: 11, cols: 11 },
+  { id: 'AZUL',     name: 'Azul',     bg: '#3b82f6', text: '#fff', rows: 12, cols: 12,
+    colMap: { A: 11, B: 11 } },
+  { id: 'PRETO',    name: 'Preto',    bg: '#111827', text: '#fff', rows: 12, cols: 12,
+    colMap: { B: 11, C: 11, D: 11 } },
   { id: 'ROSA',     name: 'Rosa',     bg: '#ec4899', text: '#fff', rows: 6, cols: 6 },
   { id: 'AMARELO',  name: 'Amarelo',  bg: '#eab308', text: '#fff', rows: 6, cols: 6 },
   { id: 'VERMELHO', name: 'Vermelho', bg: '#ef4444', text: '#fff', rows: 6, cols: 6 },
-  { id: 'CINZA',    name: 'Cinza',    bg: '#6b7280', text: '#fff', rows: 6, cols: 6 },
+  { id: 'CINZA',    name: 'Cinza',    bg: '#6b7280', text: '#fff', rows: 6, cols: 6,
+    colMap: { A: 3 } },
   { id: 'BRANCO',   name: 'Branco',   bg: '#ffffff', text: '#111', rows: 9, cols: 9, border: '#d1d5db' }
 ];
 
 const WMS_ROWS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 let currentWmsQuad = null; // null = mostra o painel dos 9, senao mostra a matriz
+
+/* Retorna quantas colunas a fileira (rowIndex) possui no quadrante q */
+function _getColsForRow(q, rowIndex) {
+  const rowChar = WMS_ROWS[rowIndex];
+  if (q.colMap && q.colMap[rowChar] !== undefined) {
+    return q.colMap[rowChar];
+  }
+  return q.cols;
+}
+
+/* Capacidade total (soma das colunas de cada fileira) */
+function _getCapacity(q) {
+  let total = 0;
+  for (let r = 0; r < q.rows; r++) {
+    total += _getColsForRow(q, r);
+  }
+  return total;
+}
 
 function _openWmsGrid(id) {
   currentWmsQuad = id;
@@ -97,7 +118,7 @@ function renderSobras() {
   if (!currentWmsQuad) {
     // RENDERIZA OS 9 CARTÕES
     const cards = WMS_QUADS.map(q => {
-      const capacity = q.rows * q.cols;
+      const capacity = _getCapacity(q);
       const occupied = appState.sobras.filter(s => s.endereco && s.endereco.startsWith(q.id + '-')).length;
       const pct = capacity > 0 ? Math.round((occupied / capacity) * 100) : 0;
       
@@ -148,20 +169,27 @@ function renderSobras() {
     // RENDERIZA A MATRIZ BATALHA NAVAL
     const q = WMS_QUADS.find(x => x.id === currentWmsQuad);
     
-    let gridHtml = `<div class="wms-matrix" style="grid-template-columns: 40px repeat(${q.cols}, 1fr);">`;
+    const maxCols = q.cols;
+    let gridHtml = `<div class="wms-matrix" style="grid-template-columns: 40px repeat(${maxCols}, 1fr);">`;
     
     // Cabeçalho (Colunas)
     gridHtml += `<div class="wms-cell header"></div>`;
-    for(let c=1; c<=q.cols; c++) {
+    for(let c=1; c<=maxCols; c++) {
       gridHtml += `<div class="wms-cell header">${c}</div>`;
     }
     
     // Linhas
     for(let r=0; r<q.rows; r++) {
       const rowChar = WMS_ROWS[r];
+      const rowCols = _getColsForRow(q, r);
       gridHtml += `<div class="wms-cell header">${rowChar}</div>`;
       
-      for(let c=1; c<=q.cols; c++) {
+      for(let c=1; c<=maxCols; c++) {
+        if (c > rowCols) {
+          // Posição inexistente nesta fileira
+          gridHtml += `<div class="wms-cell" style="background:transparent; border:1px dashed var(--border); opacity:0.15; cursor:default;"></div>`;
+          continue;
+        }
         const colStr = String(c).padStart(2, '0');
         const ender = `${q.id}-${rowChar}${colStr}`;
         
@@ -440,7 +468,8 @@ function _findNextWmsSlotByQuad(quadId) {
   const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   
   for(let r=0; r<q.rows; r++) {
-    for(let c=1; c<=q.cols; c++) {
+    const rowCols = _getColsForRow(q, r);
+    for(let c=1; c<=rowCols; c++) {
       const adr = `${q.id}-${L[r]}${String(c).padStart(2,'0')}`;
       if (!occupied.includes(adr)) return adr;
     }
@@ -503,7 +532,8 @@ function _getAllWmsSlots() {
   const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   WMS_QUADS.forEach(q => {
     for(let r=0; r<q.rows; r++) {
-      for(let c=1; c<=q.cols; c++) {
+      const rowCols = _getColsForRow(q, r);
+      for(let c=1; c<=rowCols; c++) {
         slots.push(`${q.id}-${L[r]}${String(c).padStart(2,'0')}`);
       }
     }
