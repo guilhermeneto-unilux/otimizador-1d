@@ -519,14 +519,14 @@ function _processarColarExcel() {
     }
 
     const opIdStr = idxOp !== -1 ? String(r[idxOp] || '').trim() : '';
-    let finalId = opIdStr ? (opIdStr.toUpperCase().startsWith('OP-') ? opIdStr.toUpperCase() : \`OP-\${opIdStr}\`) : \`OP-IMP-\${String(appState.configs.nextImportOpId++).padStart(4,'0')}\`;
+    let finalId = opIdStr ? (opIdStr.toUpperCase().startsWith('OP-') ? opIdStr.toUpperCase() : `OP-${opIdStr}`) : `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
     
     const clienteStr = idxCliente !== -1 ? String(r[idxCliente] || '').trim() : '';
     let entrega = idxEntrega !== -1 ? String(r[idxEntrega] || '').trim() : '';
     if (entrega && entrega.includes('/')) {
       // Assuming DD/MM/YYYY
       const parts = entrega.split('/');
-      if (parts.length === 3) entrega = \`\${parts[2]}-\${parts[1]}-\${parts[0]}\`;
+      if (parts.length === 3) entrega = `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
 
     const novaOrdem = {
@@ -561,7 +561,7 @@ function _processarColarExcel() {
 
   DB.saveConfig(appState.configs);
   closeModal();
-  showToast(\`Importação concluída! \${count} OPs carregadas.\`, 'success');
-  DB.log("Importou Texto Excel", "unilux_ordens", \`\${count} ordens coladas\`);
+  showToast(`Importação concluída! ${count} OPs carregadas.`, 'success');
+  DB.log("Importou Texto Excel", "unilux_ordens", `${count} ordens coladas`);
   renderOrdens(); updateBadges();
 }
