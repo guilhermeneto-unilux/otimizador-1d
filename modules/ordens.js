@@ -25,7 +25,7 @@ function renderOrdens() {
         <h1 class="pg-title">Ordens de Produção</h1>
       </div>
       <div class="pg-actions">
-        <button class="btn btn-white btn-sm">
+        <button class="btn btn-white btn-sm" onclick="_openColarExcelModal()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
           Modelo
         </button>
@@ -427,4 +427,141 @@ async function _handleExcelUpload(e) {
   };
   
   reader.readAsArrayBuffer(file);
+}
+
+/* =====================================================================
+   PASTE FROM EXCEL LOGIC
+   ===================================================================== */
+function _openColarExcelModal() {
+  const allHeaders = ['mrp', 'op_codigo', 'quantidade', 'numero_pedido_cliente', 'nome_cliente', 'codigo_cliente', 'sku_codigo', 'nome_produto', 'data_entrega', 'observacao', 'largura_corte', 'altura_corte', 'numero_etiqueta', 'largura_peca', 'altura_peca', 'descricao_configuracao', 'garras', 'modelo', 'qtd_carrinhos', 'emenda'];
+  const reqHeaders = ['op_codigo', 'quantidade', 'sku_codigo', 'largura_corte'];
+
+  openModal('Colar do Excel', `
+    <div style="font-size:13px; color:var(--text-500); margin-bottom:16px;">Copie as células do Excel (incluindo cabeçalho) e cole abaixo</div>
+    
+    <div style="background:var(--bg-100); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px;">
+      <div style="font-size:11px; font-weight:700; color:var(--text-400); margin-bottom:8px;">COLUNAS ESPERADAS (NA PRIMEIRA LINHA DO EXCEL):</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">
+        ${allHeaders.map(h => `<span style="background:#fff; border:1px solid #d1d5db; padding:4px 8px; border-radius:4px; font-size:12px; font-family:monospace;">${h}</span>`).join('')}
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-white btn-sm" onclick="navigator.clipboard.writeText('${allHeaders.join('\\t')}'); showToast('Cabeçalhos copiados!', 'success');">📄 Copiar todos os cabeçalhos</button>
+        <button class="btn btn-white btn-sm" style="color:var(--green); border-color:#bbf7d0;" onclick="navigator.clipboard.writeText('${reqHeaders.join('\\t')}'); showToast('Cabeçalhos obrigatórios copiados!', 'success');">📄 Copiar só obrigatórios</button>
+      </div>
+      <div style="font-size:12px; color:var(--text-500); margin-top:8px;">
+        💡 Dica: Use o botão ⬇ Modelo para baixar uma planilha já com os cabeçalhos corretos. Preencha e cole aqui.
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" style="font-size:11px; font-weight:700; color:var(--text-400); text-transform:uppercase;">COLE OS DADOS AQUI:</label>
+      <textarea id="pasteExcelArea" class="form-control" style="height:150px; font-family:monospace; font-size:12px; white-space:pre;" placeholder="Cole aqui as células copiadas do Excel.&#10;Ex:&#10;mrp&#09;op_codigo&#09;quantidade..."></textarea>
+    </div>
+  `, `
+    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-dark" onclick="_processarColarExcel()">✓ Confirmar Importação</button>
+  `);
+}
+
+function _processarColarExcel() {
+  const text = document.getElementById('pasteExcelArea').value;
+  if (!text || !text.trim()) { showToast('Nenhum dado colado!', 'error'); return; }
+
+  const lines = text.trim().split('\\n');
+  if (lines.length < 2) { showToast('Cole o cabeçalho e pelo menos uma linha de dados.', 'error'); return; }
+
+  // Normalize header
+  const header = lines[0].split('\\t').map(h => h.trim().toLowerCase());
+  
+  // Find required index
+  const idxQty = header.indexOf('quantidade');
+  const idxSku = header.indexOf('sku_codigo');
+  const idxDim = header.indexOf('largura_corte');
+
+  if (idxQty === -1 || idxSku === -1 || idxDim === -1) {
+    showToast('Faltam colunas obrigatórias: quantidade, sku_codigo, largura_corte', 'error');
+    return;
+  }
+
+  const idxOp = header.indexOf('op_codigo');
+  const idxCliente = header.indexOf('nome_cliente');
+  const idxEntrega = header.indexOf('data_entrega');
+  const idxMrp = header.indexOf('mrp');
+  const idxPedido = header.indexOf('numero_pedido_cliente');
+  const idxObs = header.indexOf('observacao');
+  const idxEtiqueta = header.indexOf('numero_etiqueta');
+
+  let count = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const r = lines[i].split('\\t');
+    // Allow lines that don't have exactly the same length if they have at least up to the required columns
+    const maxReq = Math.max(idxQty, idxSku, idxDim);
+    if (!r || r.length <= maxReq) continue;
+
+    const rawQty = parseInt(r[idxQty] || '', 10);
+    const rawSku = String(r[idxSku] || '').trim();
+    
+    // Converte Largura da Planilha para milímetros (int)
+    let rawDimVal = parseFloat(String(r[idxDim] || '').replace(',', '.'));
+    let rawDim = 0;
+    if (!isNaN(rawDimVal)) {
+      // Se for > 100, assumimos que já foi colado em mm
+      if (rawDimVal > 100) {
+        rawDim = Math.round(rawDimVal);
+      } else {
+        // Se <= 100, assumimos que está em metros e multiplicamos
+        rawDim = Math.round(rawDimVal * 1000);
+      }
+    }
+
+    if (isNaN(rawDim) || isNaN(rawQty) || rawDim <= 0 || rawQty <= 0 || !rawSku) {
+      continue;
+    }
+
+    const opIdStr = idxOp !== -1 ? String(r[idxOp] || '').trim() : '';
+    let finalId = opIdStr ? (opIdStr.toUpperCase().startsWith('OP-') ? opIdStr.toUpperCase() : \`OP-\${opIdStr}\`) : \`OP-IMP-\${String(appState.configs.nextImportOpId++).padStart(4,'0')}\`;
+    
+    const clienteStr = idxCliente !== -1 ? String(r[idxCliente] || '').trim() : '';
+    let entrega = idxEntrega !== -1 ? String(r[idxEntrega] || '').trim() : '';
+    if (entrega && entrega.includes('/')) {
+      // Assuming DD/MM/YYYY
+      const parts = entrega.split('/');
+      if (parts.length === 3) entrega = \`\${parts[2]}-\${parts[1]}-\${parts[0]}\`;
+    }
+
+    const novaOrdem = {
+      id: finalId,
+      sku: rawSku,
+      dim: rawDim,
+      qty: rawQty,
+      cliente: clienteStr || 'Planilha Colada',
+      entrega: entrega || new Date().toISOString().split('T')[0],
+      status: 'pending',
+      lote: null,
+      _meta: {
+        mrp: idxMrp !== -1 ? String(r[idxMrp] || '') : '',
+        op_original: opIdStr,
+        pedido: idxPedido !== -1 ? String(r[idxPedido] || '') : '',
+        etiqueta: idxEtiqueta !== -1 ? String(r[idxEtiqueta] || '') : '',
+        subclasse: '',
+        obs: idxObs !== -1 ? String(r[idxObs] || '') : ''
+      }
+    };
+
+    const existingIdx = appState.ordens.findIndex(o => o.id === finalId);
+    if (existingIdx !== -1) {
+      appState.ordens[existingIdx] = novaOrdem;
+    } else {
+      appState.ordens.push(novaOrdem);
+    }
+    
+    DB.saveOrdem(novaOrdem); 
+    count++;
+  }
+
+  DB.saveConfig(appState.configs);
+  closeModal();
+  showToast(\`Importação concluída! \${count} OPs carregadas.\`, 'success');
+  DB.log("Importou Texto Excel", "unilux_ordens", \`\${count} ordens coladas\`);
+  renderOrdens(); updateBadges();
 }

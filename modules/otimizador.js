@@ -512,7 +512,9 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
 
   const totalRefile = plans.length * cfgTrim;
   const globalWaste = totalRefugo + totalRefile;
-  const eff = totalBarLen > 0 ? ((totalUsedLen / totalBarLen) * 100).toFixed(2) : '0.00';
+  
+  const totalUseful = totalUsedLen + totalSobraUtil;
+  const eff = totalBarLen > 0 ? ((totalUseful / totalBarLen) * 100).toFixed(2) : '0.00';
 
   // Agrupar planos por SKU para visualização
   const skuOrder = [];
@@ -567,16 +569,21 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
       const skuPcs = skuPlans.reduce((s, x) => s + x.plan.pcs.length, 0);
       const sObj = appState.skus.find(s => s.code === sku);
       const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
-      const skuSobras = skuPlans.filter(x => {
-        const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
-        return x.plan.rem >= skuMin;
-      }).length;
+      const skuMinSobra = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
+
+      const skuSobras = skuPlans.filter(x => x.plan.rem >= skuMinSobra).length;
+
+      // Calculate SKU Efficiency
+      const skuBarLen = skuPlans.reduce((s, x) => s + x.plan.len, 0);
+      const skuUsedLen = skuPlans.reduce((s, x) => s + x.plan.pcs.reduce((a, pc) => a + pc.dim, 0), 0);
+      const skuSobraUtilLen = skuPlans.reduce((s, x) => s + (x.plan.rem >= skuMinSobra ? x.plan.rem : 0), 0);
+      const skuEff = skuBarLen > 0 ? (((skuUsedLen + skuSobraUtilLen) / skuBarLen) * 100).toFixed(1) : '0.0';
 
       return `
         <div style="margin-bottom:20px;">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 16px; background:${sc.bg}22; border-radius:6px; border-left:4px solid ${sc.text};">
             <span class="sku-tag" style="background:${sc.bg};color:${sc.text}; font-size:12px; padding:4px 10px;">${sku} ${skuShortDesc ? `- ${skuShortDesc}` : ''}</span>
-            <span style="font-size:12px; font-weight:600; color:var(--text-500);">${skuBars} barra(s) · ${skuPcs} peça(s)${skuSobras > 0 ? ` · <span style="color:#16a34a;">♻ ${skuSobras} sobra(s) gerada(s)</span>` : ''}</span>
+            <span style="font-size:12px; font-weight:600; color:var(--text-500);">${skuBars} barra(s) · ${skuPcs} peça(s) <span style="margin-left:6px; padding:2px 6px; background:rgba(0,0,0,0.05); border-radius:4px;">Aproveitamento: <b>${skuEff}%</b></span>${skuSobras > 0 ? ` · <span style="color:#16a34a;">♻ ${skuSobras} sobra(s) gerada(s)</span>` : ''}</span>
           </div>
           ${skuPlans.map(({ plan: p }, localIdx) => _renderBarCard(p, localIdx, cfgTrim)).join('')}
         </div>
@@ -629,7 +636,8 @@ function _renderBarCard(p, idx, cfgTrim) {
   }
 
   const usedMm = p.pcs.reduce((s, pc) => s + pc.dim, 0);
-  const effBar = ((usedMm / p.len) * 100).toFixed(1);
+  const barUseful = geraSobra ? (usedMm + p.rem) : usedMm;
+  const effBar = ((barUseful / p.len) * 100).toFixed(1);
 
   // Badge de sobra gerada
   const sobraBadge = geraSobra
@@ -725,7 +733,16 @@ async function _finalizarOtimizacao() {
   // Criar e salvar Histórico da Otimização
   const totalLen = plans.reduce((s,p) => s + p.len, 0);
   const totalUsed = plans.reduce((s,p) => s + p.pcs.reduce((a,pc) => a + pc.dim, 0), 0);
-  const aprov = totalLen > 0 ? ((totalUsed/totalLen)*100).toFixed(2) : '0.00';
+  
+  let histSobraUtil = 0;
+  plans.forEach(p => {
+    const sObj = appState.skus.find(x => x.code === p.sku);
+    const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
+    if (p.rem >= skuMin) histSobraUtil += p.rem;
+  });
+  
+  const histUseful = totalUsed + histSobraUtil;
+  const aprov = totalLen > 0 ? ((histUseful/totalLen)*100).toFixed(2) : '0.00';
   
   // Atribuir Plan ID global por SKU (nunca repete entre lotes)
   if (!appState.configs.nextPlanId) appState.configs.nextPlanId = 1;
