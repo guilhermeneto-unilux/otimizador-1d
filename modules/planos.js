@@ -241,25 +241,25 @@ function _exportPlanoExcel(planoId) {
           pc.dim,            // D: Dimensão do corte
           planId,            // E: Plan ID global por SKU
           dataHora,          // F: Data/hora otimização
-          'z',               // G
-          'z',               // H
-          'z',               // I
+          '',                // G: apenas com o titulo, o resto todo vazio
+          plano.id,          // H: o nome do plano em todas as linhas
+          '',                // I: apenas com o titulo, o resto todo vazio
           skuShortName,      // J: Nome do SKU Resumido
-          'z',               // K
+          sku,               // K: código do sku
           sku,               // L: Código do SKU
-          'z',               // M
-          'z',               // N
-          'z',               // O
-          'z',               // P
-          'z',               // Q
-          'z',               // R
-          'z',               // S
-          'z',               // T
-          'z',               // U
-          'z',               // V
-          'z',               // W
-          'z',               // X
-          'z',               // Y
+          '',                // M: Coluna M até Y apenas com o titulo
+          '',                // N
+          '',                // O
+          '',                // P
+          '',                // Q
+          '',                // R
+          '',                // S
+          '',                // T
+          '',                // U
+          '',                // V
+          '',                // W
+          '',                // X
+          '',                // Y
           entrega,           // Z: Data de entrega
           refile,            // AA: Refile
           refile,            // AB: Refile
