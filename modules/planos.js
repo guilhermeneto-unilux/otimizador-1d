@@ -257,7 +257,7 @@ function _exportPlanoExcel(planoId) {
           '',                // T
           '',                // U
           '',                // V
-          '',                // W
+          pc.op || '',       // W: OP da peça (mantém cabeçalho PARTORDNUM)
           '',                // X
           '',                // Y
           entrega,           // Z: Data de entrega
@@ -523,4 +523,3 @@ async function _reverterPlanoParaLote(planoId) {
     }
   };
 }
-
