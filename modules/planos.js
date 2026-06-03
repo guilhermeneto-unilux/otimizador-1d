@@ -257,7 +257,7 @@ function _exportPlanoExcel(planoId) {
           '',                // T
           '',                // U
           '',                // V
-          pc.op || '',       // W: OP da peça (mantém cabeçalho PARTORDNUM)
+          String(pc.op || '').replace(/^OP-/i, ''), // W: número da OP (mantém cabeçalho PARTORDNUM)
           '',                // X
           '',                // Y
           entrega,           // Z: Data de entrega
