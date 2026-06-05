@@ -64,6 +64,7 @@ const ROUTES = {
   ordens:        renderOrdens,
   otimizador:    renderOtimizador,
   planos:        renderPlanos,
+  compras:       renderCompras,
   sobras:        renderSobras,
   skus:          renderSkus,
   configuracoes: renderConfiguracoes,
