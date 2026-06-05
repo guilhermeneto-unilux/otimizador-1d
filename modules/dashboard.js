@@ -110,9 +110,15 @@ function renderDashboard() {
         <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px;">
           <div>
             <div style="font-size:15px; font-weight:700; color:var(--text-900);">Sobras Geradas x Utilizadas</div>
-            <div style="font-size:12px; color:var(--text-400); margin-top:2px;">Período selecionado</div>
+            <div style="font-size:12px; color:var(--text-400); margin-top:2px;">Período selecionado · ${filters.scrapSku ? _dashEsc(filters.scrapSku) : 'Todos os SKUs'}</div>
           </div>
-          <span class="status-badge" style="background:#f9fafb; color:var(--text-700); border:1px solid var(--border);">${analytics.scraps.generatedCount + analytics.scraps.usedCount} evento(s)</span>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+            <select class="form-control" style="width:190px; padding:6px 9px; font-size:12px;" onchange="_setDashboardFilter('scrapSku', this.value)">
+              <option value="">Todos os SKUs</option>
+              ${skuOptions.map(s => `<option value="${_dashEsc(s.code)}" ${filters.scrapSku === s.code ? 'selected' : ''}>${_dashEsc(s.code)}${s.short ? ` - ${_dashEsc(s.short)}` : ''}</option>`).join('')}
+            </select>
+            <span class="status-badge" style="background:#f9fafb; color:var(--text-700); border:1px solid var(--border);">${analytics.scraps.generatedCount + analytics.scraps.usedCount} evento(s)</span>
+          </div>
         </div>
         ${_renderScrapIndicator(analytics.scraps)}
       </div>
@@ -128,13 +134,14 @@ function renderDashboard() {
 function _ensureDashboardFilters() {
   if (!appState.filters) appState.filters = {};
   if (!appState.filters.dashboard) appState.filters.dashboard = _defaultDashboardFilters();
+  if (appState.filters.dashboard.scrapSku === undefined) appState.filters.dashboard.scrapSku = '';
 }
 
 function _defaultDashboardFilters() {
   const end = _dateInputValue(new Date());
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 30);
-  return { start: _dateInputValue(startDate), end, sku: '' };
+  return { start: _dateInputValue(startDate), end, sku: '', scrapSku: '' };
 }
 
 function _setDashboardFilter(key, value) {
@@ -161,6 +168,7 @@ function _normalizeDashboardDateRange() {
 function _buildDashboardAnalytics(filters) {
   const plans = _dashboardPlansInRange(filters);
   const bins = _dashboardBinsFromPlans(plans, filters.sku);
+  const scrapBins = _dashboardBinsFromPlans(plans, filters.scrapSku || '');
   const overall = _metricFromBins(bins);
   const skuMetrics = _skuMetricsFromPlans(plans, filters.sku);
   const months = _monthlyMetrics(plans, filters);
@@ -193,12 +201,18 @@ function _buildDashboardAnalytics(filters) {
     bestSkus,
     topDemand,
     scrapSizing,
-    scraps: {
-      generatedCount: overall.generatedCount,
-      generatedLen: overall.generatedLen,
-      usedCount: overall.scrapBars,
-      usedLen: overall.scrapLen
-    }
+    scraps: _scrapMetricFromBins(scrapBins, filters.scrapSku || '')
+  };
+}
+
+function _scrapMetricFromBins(bins, sku) {
+  const metric = _metricFromBins(bins);
+  return {
+    sku,
+    generatedCount: metric.generatedCount,
+    generatedLen: metric.generatedLen,
+    usedCount: metric.scrapBars,
+    usedLen: metric.scrapLen
   };
 }
 
