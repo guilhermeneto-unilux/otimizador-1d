@@ -91,6 +91,17 @@ function renderDashboard() {
       </div>
     </div>
 
+    <div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; padding:16px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap;">
+        <div>
+          <div style="font-size:15px; font-weight:700; color:var(--text-900);">Tamanho ideal para guardar sobra por SKU</div>
+          <div style="font-size:12px; color:var(--text-400); margin-top:4px;">Compara a sobra mínima atual com uma simulação baseada nas peças cortadas e nas sobras geradas no período.</div>
+        </div>
+        <span class="status-badge" style="background:#f9fafb; color:var(--text-700); border:1px solid var(--border);">${analytics.scrapSizing.length} recomendação(ões)</span>
+      </div>
+      ${_renderScrapSizingTable(analytics.scrapSizing)}
+    </div>
+
     <div class="dashboard-analytics-grid">
       <div class="card" style="padding:20px;">
         <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px;">
@@ -163,6 +174,10 @@ function _buildDashboardAnalytics(filters) {
     .filter(m => m.bars > 0)
     .sort((a, b) => b.bars - a.bars || b.barLen - a.barLen)
     .slice(0, 5);
+  const scrapSizing = _scrapSizingRecommendations(skuMetrics)
+    .filter(r => r.confidence !== 'baixa' || Math.abs(r.diff) >= 300 || r.estimatedGainLen >= 1000)
+    .sort((a, b) => b.opportunityScore - a.opportunityScore || b.estimatedGainLen - a.estimatedGainLen)
+    .slice(0, 12);
 
   return {
     plans,
@@ -172,6 +187,7 @@ function _buildDashboardAnalytics(filters) {
     worstSkus,
     bestSkus,
     topDemand,
+    scrapSizing,
     scraps: {
       generatedCount: overall.generatedCount,
       generatedLen: overall.generatedLen,
@@ -215,6 +231,9 @@ function _skuMetricsFromPlans(plans, selectedSku) {
     const sObj = appState.skus.find(s => s.code === sku);
     const pieces = [];
     bins.forEach(bin => (bin.pcs || []).forEach(pc => pieces.push(parseFloat(pc.dim) || 0)));
+    const generatedRems = bins
+      .map(bin => Math.max(0, parseFloat(bin.rem) || 0))
+      .filter(rem => rem > 0);
     const virginDims = bins
       .filter(b => b.type === 'virgin' && b.srcId && b.srcId.includes('|'))
       .map(b => parseFloat(String(b.srcId).split('|')[1]))
@@ -225,7 +244,8 @@ function _skuMetricsFromPlans(plans, selectedSku) {
       minSobra: _skuMinSobra(sku),
       trim: _dashboardTrimForBins(bins),
       currentDims: [...new Set(virginDims)].sort((a,b) => a-b),
-      pieces,
+      pieceDims: pieces,
+      generatedRems,
       ...metric
     };
   });
@@ -278,19 +298,20 @@ function _monthlyMetrics(plans, filters) {
 }
 
 function _suggestBetterBar(metric) {
-  if (!metric.pieces.length) return null;
+  const pieces = metric.pieceDims || [];
+  if (!pieces.length) return null;
 
   const maxLen = 7000;
   const step = 100;
   const trim = metric.trim || 0;
-  const largestPiece = Math.max(...metric.pieces);
+  const largestPiece = Math.max(...pieces);
   let firstCandidate = Math.ceil((largestPiece + trim + 50) / step) * step;
   firstCandidate = Math.max(step, firstCandidate);
   if (firstCandidate > maxLen) return null;
 
   let best = null;
   for (let dim = firstCandidate; dim <= maxLen; dim += step) {
-    const simulation = _simulateSingleBarSize(metric.pieces, dim, trim, metric.minSobra);
+    const simulation = _simulateSingleBarSize(pieces, dim, trim, metric.minSobra);
     if (!best || simulation.efficiency > best.efficiency || (simulation.efficiency === best.efficiency && simulation.bars < best.bars)) {
       best = simulation;
     }
@@ -337,6 +358,107 @@ function _simulateSingleBarSize(pieces, dim, trim, minSobra) {
     barLen,
     efficiency: barLen > 0 ? (usefulLen / barLen) * 100 : 0
   };
+}
+
+function _scrapSizingRecommendations(metrics) {
+  return metrics
+    .filter(m => m && m.sku && (m.pieceDims || []).length >= 3)
+    .map(m => _scrapSizingRecommendation(m))
+    .filter(Boolean);
+}
+
+function _scrapSizingRecommendation(metric) {
+  const current = Math.round(metric.minSobra || 1000);
+  const pieces = (metric.pieceDims || []).filter(v => Number.isFinite(v) && v > 0);
+  const remainders = metric.generatedRems.filter(v => Number.isFinite(v) && v > 0);
+  if (pieces.length < 3 || !remainders.length) return null;
+
+  const maxCandidate = Math.min(4000, Math.max(1000, _percentile(pieces, 0.9), _percentile(remainders, 0.9), current + 1000));
+  const start = 300;
+  const end = Math.max(start, Math.ceil(maxCandidate / 100) * 100);
+  const currentSim = _simulateScrapThreshold(current, pieces, remainders);
+  let best = null;
+
+  for (let threshold = start; threshold <= end; threshold += 100) {
+    const sim = _simulateScrapThreshold(threshold, pieces, remainders);
+    if (!best || sim.score > best.score || (sim.score === best.score && Math.abs(threshold - current) < Math.abs(best.threshold - current))) {
+      best = sim;
+    }
+  }
+
+  if (!best) return null;
+  const diff = best.threshold - current;
+  const confidence = _scrapRecommendationConfidence(pieces.length, remainders.length, metric.bars);
+  const estimatedGainLen = Math.max(0, best.score - currentSim.score);
+  const opportunityScore = estimatedGainLen + Math.abs(diff) * 0.35 + (confidence === 'alta' ? 700 : confidence === 'media' ? 300 : 0);
+  const action = Math.abs(diff) < 100 ? 'manter' : diff > 0 ? 'subir' : 'baixar';
+
+  return {
+    sku: metric.sku,
+    desc: metric.desc,
+    current,
+    ideal: best.threshold,
+    diff,
+    action,
+    confidence,
+    piecesCount: pieces.length,
+    remaindersCount: remainders.length,
+    reuseRate: best.reuseRate,
+    keptRate: best.keptRate,
+    estimatedGainLen,
+    opportunityScore,
+    reason: _scrapRecommendationReason(action, best, currentSim)
+  };
+}
+
+function _simulateScrapThreshold(threshold, pieces, remainders) {
+  const kept = remainders.filter(rem => rem >= threshold);
+  const reusable = kept.filter(rem => pieces.some(piece => piece <= rem));
+  const reusableLen = reusable.reduce((sum, rem) => sum + _bestPieceFit(rem, pieces), 0);
+  const deadLen = kept.reduce((sum, rem) => {
+    const bestFit = _bestPieceFit(rem, pieces);
+    return sum + (bestFit > 0 ? Math.max(0, rem - bestFit) * 0.25 : rem);
+  }, 0);
+  const discardedUsefulLen = remainders
+    .filter(rem => rem < threshold && pieces.some(piece => piece <= rem))
+    .reduce((sum, rem) => sum + _bestPieceFit(rem, pieces) * 0.35, 0);
+
+  return {
+    threshold,
+    keptCount: kept.length,
+    reusableCount: reusable.length,
+    keptRate: remainders.length ? kept.length / remainders.length : 0,
+    reuseRate: kept.length ? reusable.length / kept.length : 0,
+    score: reusableLen - deadLen - discardedUsefulLen
+  };
+}
+
+function _bestPieceFit(rem, pieces) {
+  let best = 0;
+  pieces.forEach(piece => {
+    if (piece <= rem && piece > best) best = piece;
+  });
+  return best;
+}
+
+function _percentile(values, pct) {
+  const sorted = values.filter(v => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * pct) - 1));
+  return sorted[idx];
+}
+
+function _scrapRecommendationConfidence(pieceCount, remainderCount, bars) {
+  if (pieceCount >= 60 && remainderCount >= 20 && bars >= 20) return 'alta';
+  if (pieceCount >= 20 && remainderCount >= 8 && bars >= 8) return 'media';
+  return 'baixa';
+}
+
+function _scrapRecommendationReason(action, best, currentSim) {
+  if (action === 'manter') return 'limite atual ja esta perto do melhor ponto simulado';
+  if (action === 'subir') return 'sobras menores tendem a virar estoque pouco reaproveitado';
+  if (best.reuseRate > currentSim.reuseRate + 0.08) return 'limite menor captura retalhos com boa chance de uso';
+  return 'historico mostra demanda para pecas menores que o limite atual';
 }
 
 function _renderMonthlyChart(months) {
@@ -457,6 +579,70 @@ function _renderDemandTable(rows) {
     </table>`;
 }
 
+function _renderScrapSizingTable(rows) {
+  if (!rows.length) {
+    return `<div class="tbl-empty">Sem histórico suficiente para recomendar ajuste de sobra mínima no período.</div>`;
+  }
+  return `
+    <table class="tbl">
+      <thead><tr><th>SKU</th><th>Sobra atual</th><th>Ideal simulado</th><th>Ajuste</th><th>Confiança</th><th>Impacto estimado</th><th>Motivo</th><th style="text-align:right;">Ação</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${_renderSkuCell(r)}</td>
+            <td><b>${fmtM(r.current)}</b></td>
+            <td><b style="color:${r.action === 'manter' ? 'var(--text-700)' : '#16a34a'};">${fmtM(r.ideal)}</b></td>
+            <td>${_renderScrapSizingDiff(r)}</td>
+            <td>${_renderConfidenceBadge(r.confidence)}</td>
+            <td>
+              <div style="font-size:12px; font-weight:700;">${fmtM(r.estimatedGainLen)}</div>
+              <div style="font-size:11px; color:var(--text-400); margin-top:2px;">${r.piecesCount} peça(s) · ${r.remaindersCount} sobra(s)</div>
+            </td>
+            <td style="font-size:12px; color:var(--text-500); max-width:230px; white-space:normal;">${_dashEsc(r.reason)}</td>
+            <td style="text-align:right;">${_renderApplyScrapSizingButton(r)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function _renderScrapSizingDiff(r) {
+  if (r.action === 'manter') return '<span style="color:var(--text-400); font-size:12px;">manter</span>';
+  const color = r.action === 'subir' ? '#f59e0b' : '#16a34a';
+  const label = r.action === 'subir' ? 'subir' : 'baixar';
+  return `<span class="status-badge" style="background:${r.action === 'subir' ? '#ffedd5' : '#dcfce7'}; color:${color}; border:1px solid ${color}33;">${label} ${fmtM(Math.abs(r.diff))}</span>`;
+}
+
+function _renderConfidenceBadge(confidence) {
+  const color = confidence === 'alta' ? '#16a34a' : confidence === 'media' ? '#f59e0b' : 'var(--text-400)';
+  const bg = confidence === 'alta' ? '#dcfce7' : confidence === 'media' ? '#ffedd5' : '#f3f4f6';
+  return `<span class="status-badge" style="background:${bg}; color:${color}; border:1px solid ${color}33;">${confidence}</span>`;
+}
+
+function _renderApplyScrapSizingButton(r) {
+  if (r.action === 'manter') return '<span style="color:var(--text-400); font-size:12px;">-</span>';
+  return `<button class="btn btn-white btn-sm" onclick="_applyScrapSizingRecommendation(${_dashJsString(r.sku)}, ${r.ideal})">Aplicar</button>`;
+}
+
+async function _applyScrapSizingRecommendation(sku, ideal) {
+  const s = appState.skus.find(x => x.code === sku);
+  if (!s) { showToast('SKU não encontrado para aplicar sugestão.', 'error'); return; }
+  if (!confirm(`Atualizar sobra mínima do SKU ${sku} para ${fmtM(ideal)}?`)) return;
+
+  const old = s.min_sobra;
+  s.min_sobra = Math.round(ideal);
+  try {
+    await DB.saveSku(s);
+    await DB.log("Aplicou sugestão de sobra mínima", "unilux_skus", `${sku}: ${fmtM(old)} -> ${fmtM(s.min_sobra)}`);
+    showToast('Sobra mínima atualizada!', 'success');
+    renderDashboard();
+  } catch (err) {
+    s.min_sobra = old;
+    console.error('Falha ao aplicar sugestão de sobra:', err);
+    showToast('Erro ao salvar sugestão no banco.', 'error');
+  }
+}
+
 function _renderSkuCell(r) {
   const sc = skuColor(r.sku);
   return `<div style="display:flex; flex-direction:column; gap:4px;">
@@ -560,6 +746,18 @@ function _dashEsc(value) {
     '"': '&quot;',
     "'": '&#39;'
   }[ch]));
+}
+
+function _dashJsString(value) {
+  return `'${String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '')}'`;
 }
 
 function _seedTestData() {
