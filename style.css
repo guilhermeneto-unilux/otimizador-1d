@@ -456,6 +456,8 @@ a { text-decoration: none; color: inherit; }
    DASHBOARD – Grid layout for lower section
    ================================================================ */
 .dashboard-lower { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.dashboard-analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.dashboard-gap-bottom { margin-bottom: 20px; }
 .flow-list { list-style: none; }
 .flow-item { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid #f3f4f6; }
 .flow-item:last-child { border-bottom: none; }
@@ -617,6 +619,9 @@ body.is-admin a.nav-item.admin-only { display: flex !important; }
     grid-template-columns: 1fr;
   }
   .dashboard-lower {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-analytics-grid {
     grid-template-columns: 1fr;
   }
   .kanban {
