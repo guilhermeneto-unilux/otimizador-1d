@@ -296,7 +296,7 @@ function _suggestBetterBar(metric) {
     }
   }
 
-  if (!best || best.efficiency <= metric.efficiency + 0.1) return null;
+  if (!best) return null;
   return {
     dim: best.dim,
     efficiency: best.efficiency,
@@ -372,7 +372,7 @@ function _renderWorstSkuTable(rows) {
             <td>${_renderSkuCell(r)}</td>
             <td><span class="status-badge" style="background:${_effBg(r.efficiency)}; color:${_effColor(r.efficiency)}; border:1px solid ${_effColor(r.efficiency)}33;">${_fmtPct(r.efficiency)}</span></td>
             <td>${r.bars}</td>
-            <td>${r.suggestion ? `<div style="font-size:12px;"><b>${fmtM(r.suggestion.dim)}</b> · ${_fmtPct(r.suggestion.efficiency)} <span style="color:#16a34a;">(+${_fmtPct(r.suggestion.gain)})</span></div>` : '<span style="color:var(--text-400); font-size:12px;">Sem ganho estimado</span>'}</td>
+            <td>${_renderBarSuggestion(r.suggestion)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -395,6 +395,21 @@ function _renderBestSkuTable(rows) {
         `).join('')}
       </tbody>
     </table>`;
+}
+
+function _renderBarSuggestion(suggestion) {
+  if (!suggestion) return '<span style="color:var(--text-400); font-size:12px;">Sem tamanho viável até 7m</span>';
+
+  const gain = suggestion.gain;
+  const gainText = gain > 0.05 ? `+${_fmtPct(gain)}` : _fmtPct(gain);
+  const gainColor = gain > 0.05 ? '#16a34a' : gain < -0.05 ? '#ef4444' : 'var(--text-400)';
+  const label = gain > 0.05 ? 'Melhor ganho' : 'Melhor simulado';
+
+  return `
+    <div style="font-size:12px;">
+      <div style="font-weight:700;">${fmtM(suggestion.dim)} · ${_fmtPct(suggestion.efficiency)}</div>
+      <div style="color:var(--text-400); margin-top:2px;">${label} <span style="color:${gainColor}; font-weight:700;">(${gainText})</span></div>
+    </div>`;
 }
 
 function _renderScrapIndicator(scraps) {
