@@ -33,12 +33,13 @@ function renderPlanos() {
                 <th>Aproveitamento</th>
                 <th>Barras</th>
                 <th>Data Finalização</th>
+                <th>Aprovado por</th>
                 <th>Status</th>
                 <th style="text-align:right;">Ações</th>
               </tr>
             </thead>
             <tbody>
-              ${planos.length ? _planosFinalizadosRows(planos) : '<tr><td colspan="7" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
+              ${planos.length ? _planosFinalizadosRows(planos) : '<tr><td colspan="8" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -72,6 +73,7 @@ function renderPlanos() {
 function _planosFinalizadosRows(planos) {
   return planos.sort((a,b) => new Date(b.data) - new Date(a.data)).map(p => {
     const barras = p.mapa ? p.mapa.length : 0;
+    const approval = _planoApprovalInfo(p);
     return `
     <tr>
       <td class="fw-700">${p.id}</td>
@@ -79,6 +81,10 @@ function _planosFinalizadosRows(planos) {
       <td><span class="status-badge badge-approved">${p.aproveitamento}</span></td>
       <td>${barras} barra(s)</td>
       <td style="color:var(--text-400);">${new Date(p.data).toLocaleString('pt-BR')}</td>
+      <td>
+        <div class="fw-700">${_planosEsc(approval.name)}</div>
+        ${approval.email ? `<div style="font-size:11px; color:var(--text-400); margin-top:2px;">${_planosEsc(approval.email)}</div>` : ''}
+      </td>
       <td><span class="status-badge badge-approved">✓ Concluído</span></td>
       <td style="text-align:right;">
         <div style="display:flex; gap:6px; justify-content:flex-end;">
@@ -95,6 +101,27 @@ function _planosFinalizadosRows(planos) {
       </td>
     </tr>`;
   }).join('');
+}
+
+function _planoApprovalInfo(plano) {
+  const raw = plano.approvedBy || plano.approved_by || plano.finalizadoPor || plano.finalizado_por || null;
+  if (!raw) return { name: 'Sem registro', email: '', role: '' };
+  if (typeof raw === 'string') return { name: raw, email: '', role: '' };
+  return {
+    name: raw.name || raw.user_name || raw.nome || 'Sem registro',
+    email: raw.email || '',
+    role: raw.role || raw.perfil || ''
+  };
+}
+
+function _planosEsc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
 }
 
 function _lotesPendentesRows(lotes) {
@@ -323,6 +350,7 @@ function _verPlanoMapa(planoId) {
   // Separar barras virgens de retalhos
   const virginPlans = plano.mapa.filter(p => p.type === 'virgin');
   const scrapPlans  = plano.mapa.filter(p => p.type === 'scrap');
+  const approval = _planoApprovalInfo(plano);
 
   // Resumo de Barras Virgens
   const virginSkuCounts = {};
@@ -358,7 +386,7 @@ function _verPlanoMapa(planoId) {
       </div>
     </div>
     <div style="margin-bottom:20px; font-size:14px; color:var(--text-400);">
-      Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b>
+      Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b> | Aprovado por: <b>${_planosEsc(approval.name)}</b>${approval.email ? ` <span style="font-size:12px;">(${_planosEsc(approval.email)})</span>` : ''}
     </div>
     <div id="modalMapaContent" style="display:flex; flex-direction:column; gap:16px; max-height:60vh; overflow-y:auto; padding-right:8px;">
       ${(() => {

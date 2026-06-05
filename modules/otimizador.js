@@ -755,12 +755,16 @@ async function _finalizarOtimizacao() {
   DB.saveConfig(appState.configs);
 
   const cfgTrimFinal = appState.configs ? (appState.configs.trim_mm || 0) : 0;
+  const finalizedAt = new Date().toISOString();
+  const approver = _approvalUserSnapshot();
   const planoFinal = {
      id: `PL-${Date.now()}`,
      loteId,
-     data: new Date().toISOString(),
+     data: finalizedAt,
      aproveitamento: aprov + '%',
      trim_mm: cfgTrimFinal,
+     approvedAt: finalizedAt,
+     approvedBy: approver,
      skuPlanIds,
      mapa: plans
   };
@@ -785,11 +789,21 @@ async function _finalizarOtimizacao() {
   
   // Save all plans to unilux_configs row id=2 (no separate table needed)
   await DB.savePlanosAll();
-  await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras)`);
+  await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name}`);
   
   showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');
   updateBadges();
   setTimeout(() => navigate('planos'), 1200);
+}
+
+function _approvalUserSnapshot() {
+  const u = appState.currentUser || {};
+  return {
+    id: u.id || '',
+    name: u.name || 'Usuário não identificado',
+    email: u.email || '',
+    role: u.role || ''
+  };
 }
 
 function _findNextWmsSlot() {
