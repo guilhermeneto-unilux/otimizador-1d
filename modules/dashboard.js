@@ -95,9 +95,12 @@ function renderDashboard() {
       <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; padding:16px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap;">
         <div>
           <div style="font-size:15px; font-weight:700; color:var(--text-900);">Tamanho ideal para guardar sobra por SKU</div>
-          <div style="font-size:12px; color:var(--text-400); margin-top:4px;">Compara a sobra mínima atual com uma simulação baseada nas peças cortadas e nas sobras geradas no período.</div>
+          <div style="font-size:12px; color:var(--text-400); margin-top:4px;">Compara a sobra mínima atual com uma simulação baseada nas peças cortadas, sobras geradas e capacidade disponível do WMS.</div>
         </div>
-        <span class="status-badge" style="background:#f9fafb; color:var(--text-700); border:1px solid var(--border);">${analytics.scrapSizing.length} recomendação(ões)</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+          <span class="status-badge" style="background:#f9fafb; color:var(--text-700); border:1px solid var(--border);">WMS ${analytics.scrapStorage.occupied}/${analytics.scrapStorage.capacity} · ${analytics.scrapStorage.occupancyPct}%</span>
+          <span class="status-badge" style="background:#f9fafb; color:var(--text-700); border:1px solid var(--border);">${analytics.scrapSizing.length} recomendação(ões)</span>
+        </div>
       </div>
       ${_renderScrapSizingTable(analytics.scrapSizing)}
     </div>
@@ -161,6 +164,7 @@ function _buildDashboardAnalytics(filters) {
   const overall = _metricFromBins(bins);
   const skuMetrics = _skuMetricsFromPlans(plans, filters.sku);
   const months = _monthlyMetrics(plans, filters);
+  const scrapStorage = _dashboardScrapStorageStats();
   const worstSkus = skuMetrics
     .filter(m => m.bars > 0)
     .sort((a, b) => a.efficiency - b.efficiency || b.bars - a.bars)
@@ -174,7 +178,7 @@ function _buildDashboardAnalytics(filters) {
     .filter(m => m.bars > 0)
     .sort((a, b) => b.bars - a.bars || b.barLen - a.barLen)
     .slice(0, 5);
-  const scrapSizing = _scrapSizingRecommendations(skuMetrics)
+  const scrapSizing = _scrapSizingRecommendations(skuMetrics, scrapStorage)
     .filter(r => r.confidence !== 'baixa' || Math.abs(r.diff) >= 300 || r.estimatedGainLen >= 1000)
     .sort((a, b) => b.opportunityScore - a.opportunityScore || b.estimatedGainLen - a.estimatedGainLen)
     .slice(0, 12);
@@ -184,6 +188,7 @@ function _buildDashboardAnalytics(filters) {
     planCount: new Set(bins.map(b => b.planId)).size,
     overall,
     months,
+    scrapStorage,
     worstSkus,
     bestSkus,
     topDemand,
@@ -360,37 +365,40 @@ function _simulateSingleBarSize(pieces, dim, trim, minSobra) {
   };
 }
 
-function _scrapSizingRecommendations(metrics) {
+function _scrapSizingRecommendations(metrics, storage) {
   return metrics
     .filter(m => m && m.sku && (m.pieceDims || []).length >= 3)
-    .map(m => _scrapSizingRecommendation(m))
+    .map(m => _scrapSizingRecommendation(m, storage))
     .filter(Boolean);
 }
 
-function _scrapSizingRecommendation(metric) {
+function _scrapSizingRecommendation(metric, storage) {
   const current = Math.round(metric.minSobra || 1000);
   const pieces = (metric.pieceDims || []).filter(v => Number.isFinite(v) && v > 0);
   const remainders = metric.generatedRems.filter(v => Number.isFinite(v) && v > 0);
   if (pieces.length < 3 || !remainders.length) return null;
 
+  const storageStats = storage || _dashboardScrapStorageStats();
+  const minOperational = _minScrapThresholdByStorage(storageStats);
   const maxCandidate = Math.min(4000, Math.max(1000, _percentile(pieces, 0.9), _percentile(remainders, 0.9), current + 1000));
-  const start = 300;
+  const start = Math.min(current, minOperational);
   const end = Math.max(start, Math.ceil(maxCandidate / 100) * 100);
   const currentSim = _simulateScrapThreshold(current, pieces, remainders);
   let best = null;
 
   for (let threshold = start; threshold <= end; threshold += 100) {
     const sim = _simulateScrapThreshold(threshold, pieces, remainders);
-    if (!best || sim.score > best.score || (sim.score === best.score && Math.abs(threshold - current) < Math.abs(best.threshold - current))) {
-      best = sim;
+    const scored = _applyStoragePressureToScrapSim(sim, currentSim, storageStats, current);
+    if (!best || scored.adjustedScore > best.adjustedScore || (scored.adjustedScore === best.adjustedScore && Math.abs(threshold - current) < Math.abs(best.threshold - current))) {
+      best = scored;
     }
   }
 
   if (!best) return null;
   const diff = best.threshold - current;
   const confidence = _scrapRecommendationConfidence(pieces.length, remainders.length, metric.bars);
-  const estimatedGainLen = Math.max(0, best.score - currentSim.score);
-  const opportunityScore = estimatedGainLen + Math.abs(diff) * 0.35 + (confidence === 'alta' ? 700 : confidence === 'media' ? 300 : 0);
+  const estimatedGainLen = Math.max(0, best.adjustedScore - currentSim.score);
+  const opportunityScore = estimatedGainLen + Math.abs(diff) * 0.25 + (confidence === 'alta' ? 700 : confidence === 'media' ? 300 : 0) - best.extraKeptCount * 80;
   const action = Math.abs(diff) < 100 ? 'manter' : diff > 0 ? 'subir' : 'baixar';
 
   return {
@@ -405,9 +413,10 @@ function _scrapSizingRecommendation(metric) {
     remaindersCount: remainders.length,
     reuseRate: best.reuseRate,
     keptRate: best.keptRate,
+    extraKeptCount: best.extraKeptCount,
     estimatedGainLen,
     opportunityScore,
-    reason: _scrapRecommendationReason(action, best, currentSim)
+    reason: _scrapRecommendationReason(action, best, currentSim, storageStats)
   };
 }
 
@@ -433,6 +442,43 @@ function _simulateScrapThreshold(threshold, pieces, remainders) {
   };
 }
 
+function _applyStoragePressureToScrapSim(sim, currentSim, storage, currentThreshold) {
+  const extraKeptCount = Math.max(0, sim.keptCount - currentSim.keptCount);
+  const isLowering = sim.threshold < currentThreshold;
+  const pressure = storage.capacity > 0 ? storage.occupied / storage.capacity : 0.75;
+  const scarcity = storage.freeSlots <= 0 ? 2 : Math.max(0, 1 - Math.min(1, storage.freeSlots / Math.max(1, storage.capacity * 0.25)));
+  const tinyPenalty = sim.threshold < 500 ? 1200 : sim.threshold < 700 ? 450 : 0;
+  const slotPenalty = isLowering ? extraKeptCount * (180 + pressure * 520 + scarcity * 480) : 0;
+  const adjustedScore = sim.score - slotPenalty - tinyPenalty;
+  return { ...sim, extraKeptCount, adjustedScore, storagePenalty: slotPenalty + tinyPenalty };
+}
+
+function _dashboardScrapStorageStats() {
+  let capacity = 0;
+  if (typeof window !== 'undefined' && Array.isArray(window.WMS_QUADS || undefined) && typeof window._getCapacity === 'function') {
+    capacity = window.WMS_QUADS.reduce((sum, q) => sum + window._getCapacity(q), 0);
+  } else if (typeof WMS_QUADS !== 'undefined' && typeof _getCapacity === 'function') {
+    capacity = WMS_QUADS.reduce((sum, q) => sum + _getCapacity(q), 0);
+  } else {
+    capacity = Math.max(1, (appState.sobras || []).length);
+  }
+  const occupied = (appState.sobras || []).filter(s => s.endereco).length;
+  const unallocated = (appState.sobras || []).filter(s => !s.endereco).length;
+  const freeSlots = Math.max(0, capacity - occupied);
+  const occupancyPct = capacity > 0 ? Math.round((occupied / capacity) * 100) : 0;
+  return { capacity, occupied, unallocated, freeSlots, occupancyPct };
+}
+
+function _minScrapThresholdByStorage(storage) {
+  if (!storage || !storage.capacity) return 800;
+  const occupancy = storage.occupied / storage.capacity;
+  if (storage.freeSlots <= 0 || occupancy >= 0.85) return 1200;
+  if (occupancy >= 0.70) return 1000;
+  if (occupancy >= 0.50) return 800;
+  if (occupancy >= 0.30) return 600;
+  return 500;
+}
+
 function _bestPieceFit(rem, pieces) {
   let best = 0;
   pieces.forEach(piece => {
@@ -454,9 +500,11 @@ function _scrapRecommendationConfidence(pieceCount, remainderCount, bars) {
   return 'baixa';
 }
 
-function _scrapRecommendationReason(action, best, currentSim) {
+function _scrapRecommendationReason(action, best, currentSim, storage) {
   if (action === 'manter') return 'limite atual ja esta perto do melhor ponto simulado';
   if (action === 'subir') return 'sobras menores tendem a virar estoque pouco reaproveitado';
+  if (best.storagePenalty > 0 && storage.occupancyPct >= 50) return 'baixar geraria mais sobras, mas a ocupacao do WMS limita o ganho';
+  if (best.extraKeptCount > 0) return `ganho compensa guardar cerca de ${best.extraKeptCount} sobra(s) a mais no periodo`;
   if (best.reuseRate > currentSim.reuseRate + 0.08) return 'limite menor captura retalhos com boa chance de uso';
   return 'historico mostra demanda para pecas menores que o limite atual';
 }
