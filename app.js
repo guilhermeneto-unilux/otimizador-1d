@@ -150,21 +150,38 @@ function initAuth() {
     try {
       const parsed = JSON.parse(saved);
       // Validate session against loaded users from DB
-      const validUser = appState.users.find(u => u.id === parsed.id && u.email === parsed.email);
+      const savedEmail = normalizeEmail(parsed.email);
+      const validUser = appState.users.find(u => u.id === parsed.id && normalizeEmail(u.email) === savedEmail);
       if (validUser) {
         appState.currentUser = validUser;
-        if (validUser.role === 'admin') document.body.classList.add('is-admin');
+        localStorage.setItem('unilux_session', JSON.stringify(sessionUser(validUser)));
+        document.body.classList.toggle('is-admin', validUser.role === 'admin');
       } else {
         // Stale session — clear it
         localStorage.removeItem('unilux_session');
         appState.currentUser = null;
+        document.body.classList.remove('is-admin');
       }
     } catch(e) {
       localStorage.removeItem('unilux_session');
       appState.currentUser = null;
+      document.body.classList.remove('is-admin');
     }
   }
   _updateLoginUI();
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function sessionUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: normalizeEmail(user.email),
+    role: user.role
+  };
 }
 
 function _updateLoginUI() {
@@ -178,11 +195,11 @@ function _updateLoginUI() {
         <form onsubmit="doLogin(); return false;" autocomplete="on">
           <div class="form-group" style="text-align:left;">
             <label class="form-label">Email</label>
-            <input type="email" id="lEmail" class="form-control" placeholder="seu.email@empresa.com" autocomplete="username" required maxlength="120">
+            <input type="email" id="lEmail" class="form-control" placeholder="seu.email@empresa.com" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required maxlength="120">
           </div>
           <div class="form-group" style="text-align:left;">
             <label class="form-label">Senha</label>
-            <input type="password" id="lPass" class="form-control" placeholder="••••••" autocomplete="current-password" required maxlength="128">
+            <input type="password" id="lPass" class="form-control" placeholder="••••••" autocomplete="current-password" autocapitalize="none" spellcheck="false" required maxlength="128">
           </div>
           <button type="submit" class="btn btn-dark" style="width:100%; justify-content:center; padding:12px;">Entrar no Sistema</button>
         </form>
@@ -209,18 +226,18 @@ function _updateLoginUI() {
 }
 
 async function doLogin() {
-  const email = document.getElementById('lEmail').value.trim();
+  const email = normalizeEmail(document.getElementById('lEmail').value);
   const pass = document.getElementById('lPass').value;
   
-  const user = appState.users.find(u => u.email === email && u.password === pass);
+  const user = appState.users.find(u => normalizeEmail(u.email) === email && String(u.password ?? '') === pass);
   if (user) {
     appState.currentUser = user;
-    localStorage.setItem('unilux_session', JSON.stringify(user));
+    localStorage.setItem('unilux_session', JSON.stringify(sessionUser(user)));
     if (user.role === 'admin') document.body.classList.add('is-admin');
     _updateLoginUI();
     showToast(`Bem-vindo, ${user.name}!`, 'success');
   } else {
-    showToast('Credenciais inválidas.', 'error');
+    showToast('Email ou senha inválidos.', 'error');
   }
 }
 

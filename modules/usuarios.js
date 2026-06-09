@@ -1,3 +1,7 @@
+function _normalizeUserEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function renderUsuarios() {
   if (appState.currentUser?.role !== 'admin') {
     document.getElementById('contentArea').innerHTML = `<h3>Acesso negado. Apenas administradores.</h3>`;
@@ -54,11 +58,11 @@ function _novoUsuarioModal() {
     </div>
     <div class="form-group">
       <label class="form-label">Email</label>
-      <input type="email" id="uEmail" class="form-control" placeholder="roberto@unilux.com.br">
+      <input type="email" id="uEmail" class="form-control" placeholder="roberto@unilux.com.br" inputmode="email" autocapitalize="none" spellcheck="false">
     </div>
     <div class="form-group">
       <label class="form-label">Senha Inicial</label>
-      <input type="text" id="uPass" class="form-control" value="unilux123">
+      <input type="text" id="uPass" class="form-control" value="unilux123" autocapitalize="none" spellcheck="false">
     </div>
     <div class="form-group">
       <label class="form-label">Nível de Acesso</label>
@@ -75,14 +79,20 @@ function _novoUsuarioModal() {
 
 async function _saveNewUser() {
   try {
-    const name = document.getElementById('uName').value;
-    const email = document.getElementById('uEmail').value;
-    const password = document.getElementById('uPass').value;
+    const name = document.getElementById('uName').value.trim();
+    const email = _normalizeUserEmail(document.getElementById('uEmail').value);
+    const password = document.getElementById('uPass').value.trim();
     const role = document.getElementById('uRole').value;
 
     if (!name || !email || !password) { 
       showToast("Preencha todos os campos!", "error"); 
       return; 
+    }
+
+    const emailJaExiste = (appState.users || []).some(u => _normalizeUserEmail(u.email) === email);
+    if (emailJaExiste) {
+      showToast("Já existe um usuário com esse email.", "error");
+      return;
     }
 
     const id = crypto.randomUUID();
@@ -114,11 +124,11 @@ function _editUserModal(id) {
     </div>
     <div class="form-group">
       <label class="form-label">Email</label>
-      <input type="email" id="uEmailEdit" class="form-control" value="${u.email}">
+      <input type="email" id="uEmailEdit" class="form-control" value="${u.email}" inputmode="email" autocapitalize="none" spellcheck="false">
     </div>
     <div class="form-group">
       <label class="form-label">Trocar Senha (Opcional)</label>
-      <input type="password" id="uPassEdit" class="form-control" placeholder="Deixe em branco para não mudar">
+      <input type="password" id="uPassEdit" class="form-control" placeholder="Deixe em branco para não mudar" autocapitalize="none" spellcheck="false">
     </div>
     <div class="form-group">
       <label class="form-label">Nível de Acesso</label>
@@ -138,12 +148,18 @@ async function _saveEditedUser(id) {
     const u = appState.users.find(x => x.id === id);
     if (!u) return;
 
-    const name = document.getElementById('uNameEdit').value;
-    const email = document.getElementById('uEmailEdit').value;
-    const newPass = document.getElementById('uPassEdit').value;
+    const name = document.getElementById('uNameEdit').value.trim();
+    const email = _normalizeUserEmail(document.getElementById('uEmailEdit').value);
+    const newPass = document.getElementById('uPassEdit').value.trim();
     const role = document.getElementById('uRoleEdit').value;
 
     if (!name || !email) { showToast("Preencha Nome e Email!", "error"); return; }
+
+    const emailJaExiste = (appState.users || []).some(x => x.id !== id && _normalizeUserEmail(x.email) === email);
+    if (emailJaExiste) {
+      showToast("Já existe outro usuário com esse email.", "error");
+      return;
+    }
 
     u.name = name;
     u.email = email;
