@@ -47,12 +47,7 @@ function renderSobras() {
   
   if (q) {
     // VISÃO DE PESQUISA: Lista todas as sobras que batem com o critério
-    const filtered = appState.sobras.filter(s => {
-      const skuObj = appState.skus.find(sk => sk.code === s.sku);
-      const desc = skuObj ? skuObj.desc.toLowerCase() : '';
-      const sDesc = skuObj ? (skuObj.short_desc || '').toLowerCase() : '';
-      return s.sku.toLowerCase().includes(q) || desc.includes(q) || sDesc.includes(q);
-    });
+    const filtered = _sobrasFilteredList(q);
 
     content.innerHTML = `
       <div class="pg-header">
@@ -66,11 +61,12 @@ function renderSobras() {
         <div class="search-input-group">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <input type="text" class="form-control" 
+                 id="sobrasSearchInput"
                  placeholder="Digite SKU ou Descrição para localizar o retalho..." 
-                 value="${appState.filters.sobras}" 
-                 oninput="appState.filters.sobras = this.value; renderSobras()" autofocus>
+                 value="${_uiEscAttr(appState.filters.sobras || '')}"
+                 oninput="_updateSobrasSearch(this.value)" autofocus>
         </div>
-        <span class="search-results-stats">${filtered.length} retalhos encontrados</span>
+        <span class="search-results-stats" id="sobrasSearchStats">${filtered.length} retalhos encontrados</span>
       </div>
 
       <div class="table-card">
@@ -85,29 +81,8 @@ function renderSobras() {
               <th style="text-align:right;">Ação</th>
             </tr>
           </thead>
-          <tbody>
-            ${filtered.map(s => {
-              const skuObj = appState.skus.find(sk => sk.code === s.sku);
-              const color = skuColor(s.sku);
-              return `
-                <tr>
-                  <td><span class="status-badge" style="background:${color.bg}; color:${color.text}; border:1px solid ${color.text}33;">${s.sku}</span></td>
-                  <td style="font-size:13px; font-weight:500;">${skuObj ? skuObj.desc : '-'}</td>
-                  <td style="font-weight:700; color:var(--orange);">${fmtM(s.medida)}</td>
-                  <td>
-                    ${s.endereco 
-                      ? `<span style="font-weight:700; color:var(--text-600);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="margin-right:4px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${s.endereco}</span>`
-                      : '<span style="color:var(--text-400); font-style:italic;">Sem endereço</span>'}
-                  </td>
-                  <td style="font-size:11px; color:var(--text-400);">${s.criacao}</td>
-                  <td style="text-align:right;">
-                    <button class="btn btn-white btn-sm" onclick="_clickWmsSlot('${s.endereco}', true)">Ver no Mapa</button>
-                    <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button>
-                  </td>
-                </tr>
-              `;
-            }).join('')}
-            ${filtered.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding:48px; color:var(--text-400);">Nenhum retalho encontrado para esta busca.</td></tr>' : ''}
+          <tbody id="sobrasSearchRowsBody">
+            ${_sobrasSearchRows(filtered)}
           </tbody>
         </table>
       </div>
@@ -143,9 +118,10 @@ function renderSobras() {
           <div class="search-input-group" style="width:200px; margin-right:8px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <input type="text" class="form-control" style="height:34px; font-size:12px;" 
+                   id="sobrasSearchInput"
                    placeholder="Localizar Retalho..." 
-                   value="${appState.filters.sobras}" 
-                   oninput="appState.filters.sobras = this.value; renderSobras()">
+                   value="${_uiEscAttr(appState.filters.sobras || '')}"
+                   oninput="_updateSobrasSearch(this.value)">
           </div>
           <button class="btn btn-green" onclick="_openManualSobraModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -232,6 +208,63 @@ function renderSobras() {
       </div>
     `;
   }
+}
+
+function _sobrasFilteredList(q = (appState.filters.sobras || '').toLowerCase()) {
+  return appState.sobras.filter(s => {
+    const skuObj = appState.skus.find(sk => sk.code === s.sku);
+    const desc = skuObj ? skuObj.desc.toLowerCase() : '';
+    const sDesc = skuObj ? (skuObj.short_desc || '').toLowerCase() : '';
+    return s.sku.toLowerCase().includes(q) || desc.includes(q) || sDesc.includes(q);
+  });
+}
+
+function _sobrasSearchRows(filtered) {
+  if (!filtered.length) {
+    return '<tr><td colspan="6" style="text-align:center; padding:48px; color:var(--text-400);">Nenhum retalho encontrado para esta busca.</td></tr>';
+  }
+
+  return filtered.map(s => {
+    const skuObj = appState.skus.find(sk => sk.code === s.sku);
+    const color = skuColor(s.sku);
+    return `
+      <tr>
+        <td><span class="status-badge" style="background:${color.bg}; color:${color.text}; border:1px solid ${color.text}33;">${s.sku}</span></td>
+        <td style="font-size:13px; font-weight:500;">${skuObj ? skuObj.desc : '-'}</td>
+        <td style="font-weight:700; color:var(--orange);">${fmtM(s.medida)}</td>
+        <td>
+          ${s.endereco
+            ? `<span style="font-weight:700; color:var(--text-600);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="margin-right:4px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${s.endereco}</span>`
+            : '<span style="color:var(--text-400); font-style:italic;">Sem endereço</span>'}
+        </td>
+        <td style="font-size:11px; color:var(--text-400);">${s.criacao}</td>
+        <td style="text-align:right;">
+          <button class="btn btn-white btn-sm" onclick="_clickWmsSlot('${s.endereco}', true)">Ver no Mapa</button>
+          <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function _updateSobrasSearch(value) {
+  const wasSearchView = !!document.getElementById('sobrasSearchRowsBody');
+  const focus = _captureInputFocus(document.getElementById('sobrasSearchInput'));
+  appState.filters.sobras = value;
+  const q = (value || '').toLowerCase();
+
+  if (!q || !wasSearchView) {
+    renderSobras();
+    _restoreInputFocus(focus);
+    return;
+  }
+
+  const filtered = _sobrasFilteredList(q);
+  const body = document.getElementById('sobrasSearchRowsBody');
+  if (body) body.innerHTML = _sobrasSearchRows(filtered);
+
+  const stats = document.getElementById('sobrasSearchStats');
+  if (stats) stats.textContent = `${filtered.length} retalhos encontrados`;
 }
 
 function _renderUnallocated() {

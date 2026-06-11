@@ -59,7 +59,7 @@ function renderCompras() {
           </select>
           <div class="search-input-group compras-search">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" class="form-control" placeholder="Buscar SKU, descricao ou fornecedor..." value="${_comprasEsc(filters.q)}" oninput="_setComprasFilter('q', this.value)">
+            <input type="text" class="form-control" id="comprasSearchInput" placeholder="Buscar SKU, descricao ou fornecedor..." value="${_comprasEsc(filters.q)}" oninput="_updateComprasSearch(this.value)">
           </div>
         </div>
       </div>
@@ -80,7 +80,7 @@ function renderCompras() {
               <th style="text-align:right;">Acoes</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="comprasRowsBody">
             ${rows.length ? rows.map(_renderComprasRow).join('') : '<tr><td colspan="10" class="tbl-empty">Nenhum SKU encontrado para os filtros atuais.</td></tr>'}
           </tbody>
         </table>
@@ -98,6 +98,16 @@ function renderCompras() {
       </div>
     </div>
   `;
+}
+
+function _updateComprasSearch(value) {
+  _ensureComprasState();
+  appState.filters.compras.q = value;
+  const rows = _comprasFilteredRows(_buildComprasAnalytics().rows, appState.filters.compras);
+  const body = document.getElementById('comprasRowsBody');
+  if (body) {
+    body.innerHTML = rows.length ? rows.map(_renderComprasRow).join('') : '<tr><td colspan="10" class="tbl-empty">Nenhum SKU encontrado para os filtros atuais.</td></tr>';
+  }
 }
 
 function _ensureComprasState() {
@@ -131,14 +141,16 @@ function _normalizeComprasConfig(raw) {
   };
 }
 
-function _setComprasFilter(key, value) {
+function _setComprasFilter(key, value, inputEl = null) {
   _ensureComprasState();
+  const focus = inputEl ? _captureInputFocus(inputEl) : null;
   if (key === 'horizonDays') {
     appState.filters.compras.horizonDays = parseInt(value, 10) || 30;
   } else {
     appState.filters.compras[key] = value;
   }
   renderCompras();
+  _restoreInputFocus(focus);
 }
 
 function _buildComprasAnalytics() {

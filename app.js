@@ -58,6 +58,50 @@ function fmtM(val) {
   return (parseFloat(val) / 1000).toFixed(3).replace('.', ',') + ' m';
 }
 
+function _uiEsc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function _uiEscAttr(value) {
+  return _uiEsc(value);
+}
+
+function _captureInputFocus(input) {
+  if (!input || !input.id) return null;
+  return {
+    id: input.id,
+    start: typeof input.selectionStart === 'number' ? input.selectionStart : null,
+    end: typeof input.selectionEnd === 'number' ? input.selectionEnd : null
+  };
+}
+
+function _restoreInputFocus(focus) {
+  if (!focus || !focus.id) return;
+  const restore = () => {
+    const input = document.getElementById(focus.id);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    if (typeof input.setSelectionRange === 'function' && focus.start !== null && focus.end !== null) {
+      const len = String(input.value || '').length;
+      input.setSelectionRange(Math.min(focus.start, len), Math.min(focus.end, len));
+    }
+  };
+  restore();
+  requestAnimationFrame(restore);
+}
+
+function _pieceLabel(pc) {
+  if (!pc) return '';
+  const op = pc.op || '';
+  return pc.qty > 1 && pc.pieceNo ? `${op} (${pc.pieceNo}/${pc.qty})` : op;
+}
+
 // ─── ROUTER ─────────────────────────────────────────────────────
 const ROUTES = {
   dashboard:     renderDashboard,
@@ -96,7 +140,9 @@ function updateBadges() {
 }
 
 // ─── UI UTILITIES ────────────────────────────────────────────────
-function openModal(title, body, footer = '') {
+function openModal(title, body, footer = '', modalClass = '') {
+  const modal = document.getElementById('modal');
+  modal.className = modalClass ? `modal ${modalClass}` : 'modal';
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML   = body;
   document.getElementById('modalFooter').innerHTML = footer;

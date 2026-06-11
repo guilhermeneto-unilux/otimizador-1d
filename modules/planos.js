@@ -363,43 +363,47 @@ function _verPlanoMapa(planoId) {
   const virginSummaryHtml = Object.entries(virginSkuCounts).map(([sku, data]) => {
     const sObj = appState.skus.find(s => s.code === sku);
     const name = sObj ? (sObj.short_desc || sObj.desc) : sku;
-    return `<div style="font-size:13px; margin-bottom:4px;">• ${sku} (${name}): <b>${data.count} barras inteiras</b> <span style="color:var(--text-400); font-size:12px;">(${fmtM(data.length)} total)</span></div>`;
+    return `<div class="plano-map-summary-line">• ${sku} (${name}): <b>${data.count} barras inteiras</b> <span>(${fmtM(data.length)} total)</span></div>`;
   }).join('');
 
   // Resumo de Retalhos em Uso
   const scrapSummaryHtml = scrapPlans.map(p => {
     const sObj = appState.skus.find(s => s.code === p.sku);
     const name = sObj ? (sObj.short_desc || sObj.desc) : p.sku;
-    return `<div style="font-size:13px; margin-bottom:4px;">• ${p.sku} (${fmtM(p.len)}): <b>Setor ${p.srcAddr || '—'}</b> <span style="color:var(--text-400); font-size:11px;">(ID: ${p.srcId})</span></div>`;
+    return `<div class="plano-map-summary-line">• ${p.sku} (${fmtM(p.len)}): <b>Setor ${p.srcAddr || '—'}</b> <span>(ID: ${p.srcId})</span></div>`;
   }).join('');
 
   const html = `
-    <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
-      <div style="padding:16px; background:var(--bg-100); border-radius:10px; border:1px solid var(--border);">
-        <div style="font-weight:800; font-size:11px; color:var(--text-500); text-transform:uppercase; margin-bottom:10px; letter-spacing:0.5px;">📦 Matéria-Prima (Barras Inteiras)</div>
-        ${virginSummaryHtml || '<div style="font-size:13px; color:var(--text-400);">Nenhuma barra virgem usada neste lote.</div>'}
+    <div class="plano-map">
+      <div class="plano-map-summary-grid">
+        <div class="plano-map-summary-card">
+          <div class="plano-map-section-title">📦 Matéria-Prima (Barras Inteiras)</div>
+          ${virginSummaryHtml || '<div class="plano-map-empty">Nenhuma barra virgem usada neste lote.</div>'}
+        </div>
+
+        <div class="plano-map-summary-card plano-map-summary-card--scrap">
+          <div class="plano-map-section-title">♻️ Retalhos Reutilizados (Abastecimento)</div>
+          ${scrapSummaryHtml || '<div class="plano-map-empty">Nenhum retalho reutilizado neste lote.</div>'}
+        </div>
       </div>
 
-      <div style="padding:16px; background:#fff7ed; border-radius:10px; border:1px solid #fed7aa;">
-        <div style="font-weight:800; font-size:11px; color:#c2410c; text-transform:uppercase; margin-bottom:10px; letter-spacing:0.5px;">♻️ Retalhos Reutilizados (Abastecimento)</div>
-        ${scrapSummaryHtml || '<div style="font-size:13px; color:#c2410c; opacity:0.7;">Nenhum retalho reutilizado neste lote.</div>'}
+      <div class="plano-map-meta">
+        Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b> | Aprovado por: <b>${_planosEsc(approval.name)}</b>${approval.email ? ` <span>(${_planosEsc(approval.email)})</span>` : ''}
       </div>
-    </div>
-    <div style="margin-bottom:20px; font-size:14px; color:var(--text-400);">
-      Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b> | Aprovado por: <b>${_planosEsc(approval.name)}</b>${approval.email ? ` <span style="font-size:12px;">(${_planosEsc(approval.email)})</span>` : ''}
-    </div>
-    <div id="modalMapaContent" style="display:flex; flex-direction:column; gap:16px; max-height:60vh; overflow-y:auto; padding-right:8px;">
-      ${(() => {
-        const c = {};
-        return plano.mapa.map(bin => {
-          if (c[bin.sku] === undefined) c[bin.sku] = 0;
-          return _renderBarResult(bin, c[bin.sku]++);
-        }).join('');
-      })()}
+
+      <div id="modalMapaContent" class="plano-map-list">
+        ${(() => {
+          const c = {};
+          return plano.mapa.map(bin => {
+            if (c[bin.sku] === undefined) c[bin.sku] = 0;
+            return _renderBarResult(bin, c[bin.sku]++);
+          }).join('');
+        })()}
+      </div>
     </div>
   `;
 
-  openModal(`Mapa do Plano: ${plano.id}`, html);
+  openModal(`Mapa do Plano: ${plano.id}`, html, '', 'modal-map');
 }
 
 function _filtrarPlanos(val) {
@@ -418,24 +422,25 @@ function _renderBarResult(bin, idx) {
   const addrText = bin.srcAddr ? ` (Endereço: ${bin.srcAddr})` : ' (Sem endereço)';
 
   return `
-    <div class="res-item" style="padding:16px; border:1px solid var(--border); border-radius:12px; background:white;">
-      <div class="res-item-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:700; color:var(--text-900);">Barra #${idx+1} — <span style="color:var(--text-400);">${fmtM(bin.len)}</span> — ${bin.type === 'scrap' ? `<span style="color:#c2410c;">Retalho ${bin.srcId}${addrText}</span>` : 'Virgem'}</span>
+    <div class="plano-map-bar-card">
+      <div class="plano-map-bar-head">
+        <span class="plano-map-bar-title">Barra #${idx+1} - <span>${fmtM(bin.len)}</span> - ${bin.type === 'scrap' ? `<strong class="plano-map-source-scrap">Retalho ${bin.srcId}${addrText}</strong>` : '<strong class="plano-map-source-virgin">Virgem</strong>'}</span>
         <span class="status-badge badge-approved">${aprov}% usado</span>
       </div>
-      <div class="bar-viz" style="height:48px; background:var(--bg-200); border-radius:6px; display:flex; position:relative; overflow:hidden; border:1px solid var(--border);">
+      <div class="plano-map-track">
         ${bin.pcs.map(pc => {
           const w = (pc.dim / bin.len) * 100;
+          const label = _pieceLabel(pc);
           return `
-            <div class="bar-pc" style="width:${w}%; background:#3b82f6; color:#fff; height:100%; border-right:2px solid #fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; font-weight:700; position:relative;" title="${pc.op}: ${fmtM(pc.dim)}">
-              <span style="font-size:9px;">${pc.op}</span>
-              <span style="font-size:10px;">${fmtM(pc.dim)}</span>
+            <div class="plano-map-piece" style="width:${w}%;" title="${label}: ${fmtM(pc.dim)}">
+              <span class="plano-map-piece-label">${label}</span>
+              <span class="plano-map-piece-dim">${fmtM(pc.dim)}</span>
             </div>
           `;
         }).join('')}
-        ${bin.rem > 0 ? `<div style="flex:1; background:repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.03) 5px, rgba(0,0,0,0.03) 10px); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-400);">Sobra: ${fmtM(bin.rem)}</div>` : ''}
+        ${bin.rem > 0 ? `<div class="plano-map-waste">Sobra: ${fmtM(bin.rem)}</div>` : ''}
       </div>
-      <div style="margin-top:8px; font-size:12px; color:var(--text-400); display:flex; gap:12px;">
+      <div class="plano-map-bar-meta">
         <span>Material: <b>${bin.sku}</b></span>
         <span>Peças: <b>${bin.pcs.length}</b></span>
       </div>

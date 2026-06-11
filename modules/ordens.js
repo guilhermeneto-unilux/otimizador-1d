@@ -3,20 +3,11 @@
 function renderOrdens() {
   const tab      = appState._ordensTab || 'pending';
   const q        = (appState.filters.ordens || '').toLowerCase();
-  
+
   const pending  = appState.ordens.filter(o => o.status === 'pending');
   const inBatch  = appState.ordens.filter(o => o.status === 'in_batch');
 
-  const activeList = tab === 'pending' ? pending : inBatch;
-  const filtered = activeList.filter(o => {
-    if (!q) return true;
-    const matchId = o.id.toLowerCase().includes(q);
-    const matchSku = o.sku.toLowerCase().includes(q);
-    const matchCliente = (o.cliente || '').toLowerCase().includes(q);
-    const matchEntrega = _fmtDate(o.entrega).toLowerCase().includes(q);
-    const matchPedido = (o._meta?.pedido || '').toString().toLowerCase().includes(q);
-    return matchId || matchSku || matchCliente || matchEntrega || matchPedido;
-  });
+  const filtered = _ordensFilteredList(tab, q);
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
@@ -60,11 +51,12 @@ function renderOrdens() {
       <div class="search-input-group">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <input type="text" class="form-control" 
+               id="ordensSearchInput"
                placeholder="Pesquisar por OP, Cliente, Pedido ou Data..." 
-               value="${appState.filters.ordens}" 
-               oninput="appState.filters.ordens = this.value; renderOrdens()">
+               value="${_uiEscAttr(appState.filters.ordens || '')}"
+               oninput="_updateOrdensSearch(this.value)">
       </div>
-      ${q ? `<span class="search-results-stats">${filtered.length} resultados</span>` : ''}
+      <span class="search-results-stats" id="ordensSearchStats" style="${q ? '' : 'display:none;'}">${filtered.length} resultados</span>
     </div>
 
     <div class="tbl-wrap">
@@ -75,12 +67,42 @@ function renderOrdens() {
             <th>OP</th><th>SKU</th><th>Dimensão Corte</th><th>QTD</th><th>Entrega</th><th>Cliente</th><th>Status</th><th style="text-align:right;">Ação</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="ordensRowsBody">
           ${_ordensRows(filtered)}
         </tbody>
       </table>
     </div>
   `;
+}
+
+function _ordensFilteredList(tab = (appState._ordensTab || 'pending'), q = (appState.filters.ordens || '').toLowerCase()) {
+  const activeList = tab === 'pending'
+    ? appState.ordens.filter(o => o.status === 'pending')
+    : appState.ordens.filter(o => o.status === 'in_batch');
+
+  return activeList.filter(o => {
+    if (!q) return true;
+    const matchId = o.id.toLowerCase().includes(q);
+    const matchSku = o.sku.toLowerCase().includes(q);
+    const matchCliente = (o.cliente || '').toLowerCase().includes(q);
+    const matchEntrega = _fmtDate(o.entrega).toLowerCase().includes(q);
+    const matchPedido = (o._meta?.pedido || '').toString().toLowerCase().includes(q);
+    return matchId || matchSku || matchCliente || matchEntrega || matchPedido;
+  });
+}
+
+function _updateOrdensSearch(value) {
+  appState.filters.ordens = value;
+  const q = (value || '').toLowerCase();
+  const filtered = _ordensFilteredList(appState._ordensTab || 'pending', q);
+  const body = document.getElementById('ordensRowsBody');
+  if (body) body.innerHTML = _ordensRows(filtered);
+
+  const stats = document.getElementById('ordensSearchStats');
+  if (stats) {
+    stats.textContent = `${filtered.length} resultados`;
+    stats.style.display = q ? '' : 'none';
+  }
 }
 
 function _ordensRows(list) {

@@ -376,6 +376,197 @@ a { text-decoration: none; color: inherit; }
   border-radius: 0 0 12px 12px;
 }
 
+.modal.modal-map {
+  width: min(1180px, 96vw);
+  max-width: 96vw;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal.modal-map .modal-header {
+  flex-shrink: 0;
+  padding: 22px 28px;
+}
+.modal.modal-map .modal-title {
+  font-size: 22px;
+  font-weight: 800;
+}
+.modal.modal-map .modal-close {
+  font-size: 30px;
+}
+.modal.modal-map .modal-body {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(94vh - 78px);
+  overflow-y: auto;
+  padding: 28px;
+}
+.modal.modal-map .modal-footer:empty {
+  display: none;
+}
+.modal.modal-map .status-badge {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.plano-map {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+.plano-map-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.plano-map-summary-card {
+  padding: 18px 20px;
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.plano-map-summary-card--scrap {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+.plano-map-section-title {
+  margin-bottom: 12px;
+  color: var(--text-700);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+.plano-map-summary-line {
+  margin-bottom: 6px;
+  color: var(--text-900);
+  font-size: 16px;
+  line-height: 1.45;
+}
+.plano-map-summary-line span,
+.plano-map-empty {
+  color: var(--text-500);
+}
+.plano-map-empty {
+  font-size: 15px;
+}
+.plano-map-meta {
+  color: var(--text-500);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.plano-map-meta b {
+  color: var(--text-900);
+}
+.plano-map-meta span {
+  font-size: 13px;
+}
+.plano-map-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-right: 6px;
+}
+.plano-map-bar-card {
+  padding: 18px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.plano-map-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.plano-map-bar-title {
+  color: var(--text-900);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.plano-map-bar-title span {
+  color: var(--text-500);
+  font-weight: 700;
+}
+.plano-map-bar-title strong {
+  font-weight: 800;
+}
+.plano-map-source-scrap {
+  color: #c2410c;
+}
+.plano-map-source-virgin {
+  color: var(--text-700);
+}
+.plano-map-track {
+  display: flex;
+  height: 76px;
+  overflow: hidden;
+  position: relative;
+  background: #f3f4f6;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.plano-map-piece {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  overflow: hidden;
+  background: #2563eb;
+  color: #fff;
+  border-right: 2px solid #fff;
+  text-align: center;
+}
+.plano-map-piece-label,
+.plano-map-piece-dim {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plano-map-piece-label {
+  font-size: 13px;
+  font-weight: 800;
+}
+.plano-map-piece-dim {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.plano-map-waste {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 72px;
+  padding: 0 8px;
+  background: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.04) 5px, rgba(0,0,0,0.04) 10px);
+  color: var(--text-500);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+.plano-map-bar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  color: var(--text-500);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.plano-map-bar-meta b {
+  color: var(--text-900);
+}
+
 /* ================================================================
    OPTIMIZER SPLIT LAYOUT
    ================================================================ */
@@ -870,6 +1061,38 @@ body.is-admin a.nav-item.admin-only { display: flex !important; }
   }
   .modal-body {
     max-height: 60vh;
+  }
+  .modal.modal-map .modal-header,
+  .modal.modal-map .modal-body {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+  .modal.modal-map .modal-title {
+    font-size: 18px;
+  }
+  .plano-map-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .plano-map-summary-line,
+  .plano-map-meta {
+    font-size: 14px;
+  }
+  .plano-map-bar-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .plano-map-bar-title {
+    font-size: 15px;
+  }
+  .plano-map-track {
+    height: 66px;
+  }
+  .plano-map-piece-label {
+    font-size: 11px;
+  }
+  .plano-map-piece-dim,
+  .plano-map-waste {
+    font-size: 11px;
   }
   .wms-dashboard {
     grid-template-columns: 1fr;

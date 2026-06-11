@@ -4,21 +4,73 @@ function renderSkus() {
   const content = document.getElementById('contentArea');
   const q       = (appState.filters.skus || '').toLowerCase();
   
-  const filteredRows = appState.skus.filter(s => {
+  const filteredRows = _skusFilteredRows(q);
+  const rows = _skusRows(filteredRows);
+
+  content.innerHTML = `
+    <div class="pg-header">
+      <div>
+        <div class="pg-eyebrow">${appState.skus.length} perfis cadastrados</div>
+        <h1 class="pg-title">Catálogo e Estoque Virgem</h1>
+      </div>
+      <button class="btn btn-green" onclick="_newSkuModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Novo Perfil & Estoque
+      </button>
+    </div>
+
+    <!-- BARRA DE BUSCA -->
+    <div class="search-bar-card" style="margin-top:24px;">
+      <div class="search-input-group">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="form-control"
+               id="skusSearchInput"
+               placeholder="Pesquisar por Código ou Descrição do Perfil..."
+               value="${_uiEscAttr(appState.filters.skus || '')}"
+               oninput="_updateSkusSearch(this.value)">
+      </div>
+      <span class="search-results-stats" id="skusSearchStats" style="${q ? '' : 'display:none;'}">${filteredRows.length} resultados</span>
+    </div>
+
+    <div class="tbl-wrap" style="margin-top:16px;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Código SKU</th>
+            <th>Descrição do Perfil</th>
+            <th>Nome Resumido</th>
+            <th>Dimensões & Lotes (m)</th>
+            <th>Total Virgem em Estoque</th>
+            <th>Sobra Mínima</th>
+            <th style="text-align:right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="skusRowsBody">
+          ${rows.length ? rows : '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _skusFilteredRows(q = (appState.filters.skus || '').toLowerCase()) {
+  return appState.skus.filter(s => {
     if (!q) return true;
-    return s.code.toLowerCase().includes(q) || 
-           s.desc.toLowerCase().includes(q) || 
+    return s.code.toLowerCase().includes(q) ||
+           s.desc.toLowerCase().includes(q) ||
            (s.short_desc || '').toLowerCase().includes(q);
   });
+}
 
-  const rows = filteredRows.map(s => {
+function _skusRows(list) {
+  return list.map(s => {
     const sc = skuColor(s.code);
-    
+
     // Calcula o total de barras em estoque desse SKU
     const totalQty = s.dims ? s.dims.reduce((acc, d) => acc + (parseInt(d.qty)||0), 0) : 0;
-    
+
     // Lista das dimensões para exibição
-    const dimsText = s.dims && s.dims.length > 0 
+    const dimsText = s.dims && s.dims.length > 0
       ? s.dims.map(d => `<span style="background:#e5e7eb; padding:2px 6px; border-radius:4px; font-size:11px;">${fmtM(d.dim)} (${d.qty}x)</span>`).join(' ')
       : '<span style="color:#9ca3af;">Sem estoque</span>';
 
@@ -50,50 +102,22 @@ function renderSkus() {
       </tr>
     `;
   }).join('');
+}
 
-  content.innerHTML = `
-    <div class="pg-header">
-      <div>
-        <div class="pg-eyebrow">${appState.skus.length} perfis cadastrados</div>
-        <h1 class="pg-title">Catálogo e Estoque Virgem</h1>
-      </div>
-      <button class="btn btn-green" onclick="_newSkuModal()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        Novo Perfil & Estoque
-      </button>
-    </div>
+function _updateSkusSearch(value) {
+  appState.filters.skus = value;
+  const q = (value || '').toLowerCase();
+  const filteredRows = _skusFilteredRows(q);
+  const rows = _skusRows(filteredRows);
 
-    <!-- BARRA DE BUSCA -->
-    <div class="search-bar-card" style="margin-top:24px;">
-      <div class="search-input-group">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input type="text" class="form-control" 
-               placeholder="Pesquisar por Código ou Descrição do Perfil..." 
-               value="${appState.filters.skus}" 
-               oninput="appState.filters.skus = this.value; renderSkus()">
-      </div>
-      ${q ? `<span class="search-results-stats">${filteredRows.length} resultados</span>` : ''}
-    </div>
+  const body = document.getElementById('skusRowsBody');
+  if (body) body.innerHTML = rows || '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>';
 
-    <div class="tbl-wrap" style="margin-top:16px;">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th>Código SKU</th>
-            <th>Descrição do Perfil</th>
-            <th>Nome Resumido</th>
-            <th>Dimensões & Lotes (m)</th>
-            <th>Total Virgem em Estoque</th>
-            <th>Sobra Mínima</th>
-            <th style="text-align:right;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.length ? rows : '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-  `;
+  const stats = document.getElementById('skusSearchStats');
+  if (stats) {
+    stats.textContent = `${filteredRows.length} resultados`;
+    stats.style.display = q ? '' : 'none';
+  }
 }
 
 function _getSkuFormHtml(sku = null) {
