@@ -606,6 +606,22 @@ a { text-decoration: none; color: inherit; }
 }
 .bar-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-400); margin-top: 8px; font-weight: 500; }
 
+/* Resultados do otimizador: texto 2px menor apos calcular */
+#otimResults .stats-row .stat-lbl { font-size: 8px; }
+#otimResults .stats-row .stat-val { font-size: 18px; }
+#otimResults .stats-row .stat-val span { font-size: 9px !important; }
+#otimResults .stats-row + div > span { font-size: 9px !important; }
+#otimResults .sku-tag,
+#otimResults .sku-tag + span { font-size: 10px !important; }
+#otimResults .status-badge { font-size: 9px !important; }
+#otimResults .bar-seg { font-size: 8px !important; }
+#otimResults .bar-seg span[style*="font-size:9px"] { font-size: 7px !important; }
+#otimResults .bar-seg span[style*="font-size:10px"] { font-size: 8px !important; }
+#otimResults .bar-result-card span[style*="font-size:14px"] { font-size: 12px !important; }
+#otimResults .bar-result-card span[style*="font-size:12px"] { font-size: 10px !important; }
+#otimResults .bar-result-card span[style*="font-size:10px"] { font-size: 8px !important; }
+#otimResults .bar-meta { font-size: 9px; }
+
 /* ================================================================
    KANBAN (Planos)
    ================================================================ */
