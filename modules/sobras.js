@@ -301,7 +301,7 @@ function _clickWmsSlot(endereco, isOccupied) {
         </div>
       `,
       `
-        <div><button class="btn btn-white" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir / Consumir</button></div>
+        <div><button class="btn btn-white" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button></div>
         <button class="btn btn-white" onclick="closeModal()">Fechar</button>
       `
     );
@@ -440,11 +440,79 @@ async function _salvarSobra(btnEl) {
 
 function _consumirSobra(id) {
   const s = appState.sobras.find(x => x.id === id);
-  appState.sobras = appState.sobras.filter(s => s.id !== id);
-  DB.deleteSobra(id); 
-  DB.log("Consumiu Sobra", "unilux_sobras", `${s ? s.sku : id} de ${s ? s.endereco : '?'}`);
-  showToast('Retalho removido.', 'info');
-  closeModal(); renderSobras(); updateBadges();
+  if (!s) {
+    showToast('Sobra não encontrada.', 'error');
+    return;
+  }
+
+  openModal(
+    'Excluir Sobra',
+    `
+      <div style="background:#f9fafb; padding:14px 16px; border:1px solid var(--border); border-radius:8px; margin-bottom:18px;">
+        <div style="font-size:12px; color:var(--text-500); margin-bottom:4px;">${_uiEsc(s.id)} · ${_uiEsc(s.endereco || 'sem endereço')}</div>
+        <div style="font-size:18px; font-weight:800; color:var(--text-900);">${_uiEsc(s.sku)} <span style="color:var(--orange);">· ${fmtM(s.medida)}</span></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Motivo da exclusão</label>
+        <select class="form-control" id="sobraDeleteReason">
+          <option value="">Selecione o motivo...</option>
+          <option value="Ajuste de estoque">Ajuste de estoque</option>
+          <option value="Perfil danificado">Perfil danificado</option>
+          <option value="Perfil com baixo giro">Perfil com baixo giro</option>
+          <option value="Outros">Outros</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Observação</label>
+        <textarea class="form-control" id="sobraDeleteObs" rows="3" placeholder="Detalhe o motivo, se necessário"></textarea>
+      </div>
+    `,
+    `
+      <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-red" onclick="_confirmarExcluirSobra('${id}', this)">Excluir Sobra</button>
+    `
+  );
+}
+
+async function _confirmarExcluirSobra(id, btnEl) {
+  const s = appState.sobras.find(x => x.id === id);
+  const reason = document.getElementById('sobraDeleteReason')?.value || '';
+  const obs = document.getElementById('sobraDeleteObs')?.value.trim() || '';
+
+  if (!s) {
+    showToast('Sobra não encontrada.', 'error');
+    return;
+  }
+  if (!reason) {
+    showToast('Selecione o motivo da exclusão.', 'error');
+    return;
+  }
+
+  if (btnEl) {
+    btnEl.dataset.originalText = btnEl.textContent;
+    btnEl.disabled = true;
+    btnEl.textContent = 'Excluindo...';
+  }
+
+  try {
+    await DB.deleteSobra(id);
+    appState.sobras = appState.sobras.filter(item => item.id !== id);
+    const details = `${s.sku} de ${s.endereco || 'sem endereço'} · ${fmtM(s.medida)} · Motivo: ${reason}${obs ? ` · Obs: ${obs}` : ''}`;
+    await DB.log("Excluiu Sobra", "unilux_sobras", details);
+    showToast('Sobra excluída.', 'info');
+    closeModal();
+    renderSobras();
+    updateBadges();
+  } catch (err) {
+    console.error('Erro ao excluir sobra:', err);
+    showToast('Erro ao excluir sobra. Verifique sua conexão.', 'error');
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.textContent = btnEl.dataset.originalText || 'Excluir Sobra';
+    }
+  }
 }
 
 // ─── NOVO FLUXO: PASSO 1 (ESCANEAR) ───────────────────────────
