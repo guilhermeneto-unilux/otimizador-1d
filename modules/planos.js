@@ -420,6 +420,9 @@ function _renderBarResult(bin, idx) {
   const sObj = appState.skus.find(s => s.code === bin.sku);
   const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
   const addrText = bin.srcAddr ? ` (Endereço: ${bin.srcAddr})` : ' (Sem endereço)';
+  const skuMinSobra = _planoSkuMinSobra(bin.sku);
+  const restanteEhSobra = bin.rem >= skuMinSobra;
+  const restanteLabel = restanteEhSobra ? 'Sobra' : 'Descarte';
 
   return `
     <div class="plano-map-bar-card">
@@ -438,7 +441,7 @@ function _renderBarResult(bin, idx) {
             </div>
           `;
         }).join('')}
-        ${bin.rem > 0 ? `<div class="plano-map-waste">Sobra: ${fmtM(bin.rem)}</div>` : ''}
+        ${bin.rem > 0 ? `<div class="plano-map-waste" title="${restanteLabel}: ${fmtM(bin.rem)}">${restanteLabel}: ${fmtM(bin.rem)}</div>` : ''}
       </div>
       <div class="plano-map-bar-meta">
         <span>Material: <b>${bin.sku}</b></span>
@@ -446,6 +449,13 @@ function _renderBarResult(bin, idx) {
       </div>
     </div>
   `;
+}
+
+function _planoSkuMinSobra(sku) {
+  const sObj = appState.skus.find(s => s.code === sku);
+  const raw = sObj && sObj.min_sobra !== undefined ? Number(sObj.min_sobra) : 1000;
+  if (Number.isFinite(raw) && raw > 0 && raw < 10) return Math.round(raw * 1000);
+  return Number.isFinite(raw) && raw > 0 ? raw : 1000;
 }
 
 async function _reverterPlanoParaLote(planoId) {
