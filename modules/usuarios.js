@@ -15,7 +15,7 @@ function renderUsuarios() {
         <div class="pg-eyebrow">Sistema</div>
         <h1 class="pg-title">Gestão de Usuários</h1>
       </div>
-      <button class="btn btn-green" onclick="_novoUsuarioModal()">+ Novo Usuário</button>
+      <button class="btn btn-white" onclick="_refreshUsuarios()">Atualizar</button>
     </div>
 
     <div class="tbl-wrap">
@@ -31,11 +31,11 @@ function renderUsuarios() {
         <tbody>
           ${users.map(u => `
             <tr>
-              <td><div class="fw-700">${u.name}</div></td>
-              <td>${u.email}</td>
+              <td><div class="fw-700">${_userEsc(u.name)}</div></td>
+              <td>${_userEsc(u.email)}</td>
               <td>
                 <span class="status-badge ${u.role === 'admin' ? 'badge-batch' : 'badge-done'}">
-                  ${u.role.toUpperCase()}
+                  ${_userEsc(String(u.role || '').toUpperCase())}
                 </span>
               </td>
               <td style="text-align:right;">
@@ -52,65 +52,21 @@ function renderUsuarios() {
 
 function _novoUsuarioModal() {
   openModal("Novo Usuário", `
-    <div class="form-group">
-      <label class="form-label">Nome Completo</label>
-      <input type="text" id="uName" class="form-control" placeholder="Ex: Roberto Silva">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Email</label>
-      <input type="email" id="uEmail" class="form-control" placeholder="roberto@unilux.com.br" inputmode="email" autocapitalize="none" spellcheck="false">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Senha Inicial</label>
-      <input type="text" id="uPass" class="form-control" value="unilux123" autocapitalize="none" spellcheck="false">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Nível de Acesso</label>
-      <select id="uRole" class="form-control">
-        <option value="operador">Operador (Acesso restrito)</option>
-        <option value="admin">Administrador (Acesso total)</option>
-      </select>
-    </div>
+    <p style="font-size:13px; color:var(--text-500); line-height:1.5;">
+      A criação de usuários foi bloqueada nesta tela para evitar senhas em texto puro. Crie o usuário no Supabase Auth e vincule um perfil em <code>unilux_users</code>.
+    </p>
   `, `
-    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-green" onclick="_saveNewUser()">Criar Usuário</button>
+    <button class="btn btn-dark" onclick="closeModal()">Fechar</button>
   `);
 }
 
+async function _refreshUsuarios() {
+  await DB.init(APP_MOCK);
+  renderUsuarios();
+}
+
 async function _saveNewUser() {
-  try {
-    const name = document.getElementById('uName').value.trim();
-    const email = _normalizeUserEmail(document.getElementById('uEmail').value);
-    const password = document.getElementById('uPass').value.trim();
-    const role = document.getElementById('uRole').value;
-
-    if (!name || !email || !password) { 
-      showToast("Preencha todos os campos!", "error"); 
-      return; 
-    }
-
-    const emailJaExiste = (appState.users || []).some(u => _normalizeUserEmail(u.email) === email);
-    if (emailJaExiste) {
-      showToast("Já existe um usuário com esse email.", "error");
-      return;
-    }
-
-    const id = crypto.randomUUID();
-    const newUser = { id, name, email, password, role };
-    await DB.saveUser(newUser);
-    await DB.log("Criou usuário", "unilux_users", `${name} (${role})`);
-    
-    showToast("Usuário criado com sucesso!", "success");
-    closeModal();
-    
-    if (!appState.users) appState.users = [];
-    appState.users.push(newUser);
-    
-    await DB.init(); 
-    renderUsuarios();
-  } catch (err) {
-    showToast("Erro ao criar usuário. Tente novamente.", "error");
-  }
+  showToast("Criação pelo navegador desativada.", "error");
 }
 
 function _editUserModal(id) {
@@ -120,15 +76,11 @@ function _editUserModal(id) {
   openModal(`Editar Usuário: ${u.name}`, `
     <div class="form-group">
       <label class="form-label">Nome Completo</label>
-      <input type="text" id="uNameEdit" class="form-control" value="${u.name}">
+      <input type="text" id="uNameEdit" class="form-control" value="${_userEscAttr(u.name)}">
     </div>
     <div class="form-group">
       <label class="form-label">Email</label>
-      <input type="email" id="uEmailEdit" class="form-control" value="${u.email}" inputmode="email" autocapitalize="none" spellcheck="false">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Trocar Senha (Opcional)</label>
-      <input type="password" id="uPassEdit" class="form-control" placeholder="Deixe em branco para não mudar" autocapitalize="none" spellcheck="false">
+      <input type="email" id="uEmailEdit" class="form-control" value="${_userEscAttr(u.email)}" disabled>
     </div>
     <div class="form-group">
       <label class="form-label">Nível de Acesso</label>
@@ -149,22 +101,12 @@ async function _saveEditedUser(id) {
     if (!u) return;
 
     const name = document.getElementById('uNameEdit').value.trim();
-    const email = _normalizeUserEmail(document.getElementById('uEmailEdit').value);
-    const newPass = document.getElementById('uPassEdit').value.trim();
     const role = document.getElementById('uRoleEdit').value;
 
-    if (!name || !email) { showToast("Preencha Nome e Email!", "error"); return; }
-
-    const emailJaExiste = (appState.users || []).some(x => x.id !== id && _normalizeUserEmail(x.email) === email);
-    if (emailJaExiste) {
-      showToast("Já existe outro usuário com esse email.", "error");
-      return;
-    }
+    if (!name) { showToast("Preencha o Nome!", "error"); return; }
 
     u.name = name;
-    u.email = email;
     u.role = role;
-    if (newPass) u.password = newPass;
 
     await DB.saveUser(u);
     await DB.log("Editou usuário", "unilux_users", `${u.name} (${u.role})`);
@@ -178,6 +120,10 @@ async function _saveEditedUser(id) {
 }
 
 async function _deleteUser(id) {
+  if (appState.currentUser?.id === id) {
+    showToast("Não remova o próprio acesso ativo.", "error");
+    return;
+  }
   if (confirm("Deseja realmente remover este acesso?")) {
     await DB.deleteUser(id);
     await DB.log("Removeu usuário", "unilux_users", id);
@@ -185,4 +131,18 @@ async function _deleteUser(id) {
     await DB.init(); // Refresh
     renderUsuarios();
   }
+}
+
+function _userEsc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function _userEscAttr(value) {
+  return _userEsc(value);
 }

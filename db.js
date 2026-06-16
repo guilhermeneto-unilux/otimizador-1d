@@ -6,6 +6,7 @@ const SUPABASE_URL = 'https://yqnntrsdbqwtlfgmcmqq.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxbm50cnNkYnF3dGxmZ21jbXFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3Mzc5NTQsImV4cCI6MjA5MTMxMzk1NH0.Mh2t0MWxo490KPHQG9VS1wg8-Yp_rDLsydXfmpwLB14';
 
 const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const UNILUX_PROFILE_COLUMNS = 'id, auth_uid, name, email, role, created_at';
 
 const DEFAULT_COMPRAS_CONFIG = {
   global: {
@@ -33,6 +34,12 @@ const appState = {
 const DB = {
   async init(initialData) {
     if (supabaseClient) {
+      if (!appState.currentUser) {
+        this.clearSensitiveState();
+        this._updateStatusUI('Login necessário');
+        return;
+      }
+
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
@@ -43,14 +50,15 @@ const DB = {
           supabaseClient.from('unilux_lotes').select('*'),
           supabaseClient.from('unilux_historico').select('*'),
           supabaseClient.from('unilux_configs').select('data').eq('id', 1).single(),
-          supabaseClient.from('unilux_users').select('*'),
+          supabaseClient.from('unilux_users').select(UNILUX_PROFILE_COLUMNS).order('name'),
           supabaseClient.from('unilux_configs').select('data').eq('id', 2).single(),
           supabaseClient.from('unilux_configs').select('data').eq('id', 3).single()
         ]);
 
         if (skusReq.error) {
-          console.warn('⚠️ Tabelas não encontradas no Supabase!');
-          this._fallbackLocal(initialData);
+          console.warn('⚠️ Falha ao carregar dados protegidos do Supabase:', skusReq.error);
+          this.clearSensitiveState();
+          this._updateStatusUI('Sessão inválida');
           return;
         }
 
@@ -87,6 +95,8 @@ const DB = {
         appState.lotes = (lotesReq.data || []).filter(l => l.ordens && l.ordens.length > 0 && l.status === 'pending');
         appState.historico = histReq.data || [];
         appState.users = usersReq.data || [];
+        const ownProfile = appState.users.find(u => u.auth_uid === appState.currentUser.auth_uid || u.id === appState.currentUser.id);
+        if (ownProfile) appState.currentUser = ownProfile;
         // Plans are stored in unilux_configs row id=2 as a JSON blob
         const rawPlanos = cfgPlanosReq.data?.data?.planos || [];
         appState.planos = rawPlanos.map(p => {
@@ -123,6 +133,34 @@ const DB = {
     }
   },
 
+  clearSensitiveState() {
+    appState.ordens = [];
+    appState.lotes = [];
+    appState.planos = [];
+    appState.barras = [];
+    appState.sobras = [];
+    appState.historico = [];
+    appState.skus = [];
+    appState.users = [];
+    appState.audit = [];
+    appState.configs = { trim_m: 0, scrap_penalty_pct: 0 };
+    appState.comprasConfig = JSON.parse(JSON.stringify(DEFAULT_COMPRAS_CONFIG));
+  },
+
+  async fetchCurrentUserProfile(authUser) {
+    if (!supabaseClient || !authUser?.id) return null;
+    const { data, error } = await supabaseClient
+      .from('unilux_users')
+      .select(UNILUX_PROFILE_COLUMNS)
+      .eq('auth_uid', authUser.id)
+      .single();
+    if (error) {
+      console.error('Erro ao carregar perfil do usuário:', error);
+      return null;
+    }
+    return data;
+  },
+
   _fallbackLocal(initialData) {
     console.warn('Usando dados em memória (Fallback).');
     Object.assign(appState, initialData);
@@ -149,6 +187,7 @@ const DB = {
 
   _updateStatusUI(statusTxt) {
     setTimeout(() => {
+      if (appState.currentUser) return;
       const footer = document.querySelector('.sidebar-footer');
       if (footer) {
         const cColor = statusTxt.includes('Ativo') ? '#22c55e' : '#fca5a5';
@@ -238,7 +277,14 @@ const DB = {
 
   async saveUser(u) {
     if (!supabaseClient) return;
-    const { error } = await supabaseClient.from('unilux_users').upsert(u);
+    const dbUser = {
+      id: u.id,
+      auth_uid: u.auth_uid || null,
+      name: u.name,
+      email: String(u.email || '').trim().toLowerCase(),
+      role: u.role || 'operador'
+    };
+    const { error } = await supabaseClient.from('unilux_users').upsert(dbUser);
     if (error) {
       console.error('Erro Users:', error);
       throw error;

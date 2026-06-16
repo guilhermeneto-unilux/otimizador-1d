@@ -102,6 +102,14 @@ function _pieceLabel(pc) {
   return pc.qty > 1 && pc.pieceNo ? `${op} (${pc.pieceNo}/${pc.qty})` : op;
 }
 
+function _pieceExportId(pc) {
+  return _opDigits(pc?.op || pc?.pieceId || '');
+}
+
+function _opDigits(value) {
+  return String(value ?? '').split('#')[0].replace(/^OP[\s-]*/i, '').replace(/\D/g, '');
+}
+
 // ─── ROUTER ─────────────────────────────────────────────────────
 const ROUTES = {
   dashboard:     renderDashboard,
@@ -166,16 +174,8 @@ function showToast(msg, type = 'success') {
 
 // ─── INIT ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  await DB.init(APP_MOCK);
-  
-  // One-time session invalidation: force everyone to log in fresh
-  const APP_VERSION = '3.13';
-  if (localStorage.getItem('unilux_app_version') !== APP_VERSION) {
-    localStorage.removeItem('unilux_session');
-    localStorage.setItem('unilux_app_version', APP_VERSION);
-  }
-  
-  initAuth();
+  localStorage.removeItem('unilux_session');
+  await initAuth();
 
   document.querySelectorAll('.nav-item[data-route]').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.route); });
@@ -187,47 +187,48 @@ document.addEventListener('DOMContentLoaded', async () => {
   const overlay = document.getElementById('modalOverlay');
   if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
 
-  navigate('dashboard');
+  if (appState.currentUser) {
+    await DB.init(APP_MOCK);
+    _updateLoginUI();
+    navigate('dashboard');
+  }
 });
 
-function initAuth() {
-  const saved = localStorage.getItem('unilux_session');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      // Validate session against loaded users from DB
-      const savedEmail = normalizeEmail(parsed.email);
-      const validUser = appState.users.find(u => u.id === parsed.id && normalizeEmail(u.email) === savedEmail);
-      if (validUser) {
-        appState.currentUser = validUser;
-        localStorage.setItem('unilux_session', JSON.stringify(sessionUser(validUser)));
-        document.body.classList.toggle('is-admin', validUser.role === 'admin');
-      } else {
-        // Stale session — clear it
-        localStorage.removeItem('unilux_session');
-        appState.currentUser = null;
-        document.body.classList.remove('is-admin');
-      }
-    } catch(e) {
-      localStorage.removeItem('unilux_session');
-      appState.currentUser = null;
-      document.body.classList.remove('is-admin');
-    }
+async function initAuth() {
+  localStorage.removeItem('unilux_session');
+  if (!supabaseClient) {
+    appState.currentUser = null;
+    document.body.classList.remove('is-admin');
+    _updateLoginUI();
+    return;
   }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  const authUser = data?.session?.user;
+  if (error || !authUser) {
+    appState.currentUser = null;
+    document.body.classList.remove('is-admin');
+    _updateLoginUI();
+    return;
+  }
+
+  const profile = await DB.fetchCurrentUserProfile(authUser);
+  if (!profile) {
+    await supabaseClient.auth.signOut();
+    appState.currentUser = null;
+    document.body.classList.remove('is-admin');
+    _updateLoginUI();
+    showToast('Perfil de acesso não encontrado.', 'error');
+    return;
+  }
+
+  appState.currentUser = profile;
+  document.body.classList.toggle('is-admin', profile.role === 'admin');
   _updateLoginUI();
 }
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
-}
-
-function sessionUser(user) {
-  return {
-    id: user.id,
-    name: user.name,
-    email: normalizeEmail(user.email),
-    role: user.role
-  };
 }
 
 function _updateLoginUI() {
@@ -259,8 +260,8 @@ function _updateLoginUI() {
       footer.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
           <div>
-            <div class="dot"></div> ${appState.currentUser.name}
-            <div style="font-size:9px; margin-top:2px; opacity:0.6;">${appState.currentUser.role.toUpperCase()}</div>
+            <div class="dot"></div> ${_uiEsc(appState.currentUser.name)}
+            <div style="font-size:9px; margin-top:2px; opacity:0.6;">${_uiEsc(appState.currentUser.role.toUpperCase())}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Sair" style="padding:4px;">
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
@@ -274,23 +275,42 @@ function _updateLoginUI() {
 async function doLogin() {
   const email = normalizeEmail(document.getElementById('lEmail').value);
   const pass = document.getElementById('lPass').value;
-  
-  const user = appState.users.find(u => normalizeEmail(u.email) === email && String(u.password ?? '') === pass);
-  if (user) {
-    appState.currentUser = user;
-    localStorage.setItem('unilux_session', JSON.stringify(sessionUser(user)));
-    if (user.role === 'admin') document.body.classList.add('is-admin');
-    _updateLoginUI();
-    showToast(`Bem-vindo, ${user.name}!`, 'success');
-  } else {
+
+  if (!supabaseClient) {
+    showToast('Supabase indisponível.', 'error');
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
+  if (error || !data?.user) {
     showToast('Email ou senha inválidos.', 'error');
+    return;
+  }
+
+  const profile = await DB.fetchCurrentUserProfile(data.user);
+  if (profile) {
+    appState.currentUser = profile;
+    document.body.classList.toggle('is-admin', profile.role === 'admin');
+    _updateLoginUI();
+    await DB.init(APP_MOCK);
+    _updateLoginUI();
+    navigate('dashboard');
+    showToast(`Bem-vindo, ${profile.name}!`, 'success');
+  } else {
+    await supabaseClient.auth.signOut();
+    appState.currentUser = null;
+    document.body.classList.remove('is-admin');
+    _updateLoginUI();
+    showToast('Perfil de acesso não encontrado.', 'error');
   }
 }
 
-function doLogout() {
+async function doLogout() {
+  if (supabaseClient) await supabaseClient.auth.signOut();
   localStorage.removeItem('unilux_session');
   appState.currentUser = null;
   document.body.classList.remove('is-admin');
+  DB.clearSensitiveState();
+  document.getElementById('contentArea').innerHTML = '';
   _updateLoginUI();
-  navigate('dashboard');
 }

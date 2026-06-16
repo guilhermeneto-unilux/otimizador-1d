@@ -180,7 +180,7 @@ async function _excluirLotePendente(id) {
 function _abrirLoteNoOtimizador(loteId) {
   navigate('otimizador');
   setTimeout(() => {
-    const sel = document.getElementById('otimLoteSelect');
+    const sel = document.getElementById('otimLote');
     if (sel) sel.value = loteId;
   }, 100);
 }
@@ -283,8 +283,8 @@ function _exportPlanoExcel(planoId) {
           '',                // S
           '',                // T
           '',                // U
-          '',                // V
-          String(pc.op || '').replace(/^OP-/i, ''), // W: número da OP (mantém cabeçalho PARTORDNUM)
+          _pieceExportId(pc), // V: PARTID com os dígitos da OP
+          _opDigits(pc.op || pc.pieceId), // W: número da OP (mantém cabeçalho PARTORDNUM)
           '',                // X
           '',                // Y
           entrega,           // Z: Data de entrega
@@ -537,8 +537,8 @@ async function _reverterPlanoParaLote(planoId) {
         await DB.saveLote(loteObj);
         for (const oid of ords) {
           let o = appState.ordens.find(x => x.id === oid);
-          if (!o && window.supabase) {
-             const req = await window.supabase.from('unilux_ordens').select('*').eq('id', oid).single();
+          if (!o && supabaseClient) {
+             const req = await supabaseClient.from('unilux_ordens').select('*').eq('id', oid).single();
              if (req.data) o = req.data;
           }
           if (o) {
