@@ -6,6 +6,7 @@ function renderCompras() {
   _ensureComprasState();
 
   const filters = appState.filters.compras;
+  const activeTab = filters.tab || 'analise';
   const analytics = _buildComprasAnalytics();
   const rows = _comprasFilteredRows(analytics.rows, filters);
 
@@ -16,11 +17,18 @@ function renderCompras() {
         <h1 class="pg-title">Compras</h1>
       </div>
       <div class="pg-actions">
+        <button class="btn btn-green btn-sm" onclick="_openComprasEntradaModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+          Entrada
+        </button>
         <button class="btn btn-white btn-sm" onclick="_openComprasGlobalModal()">Parametros</button>
         <button class="btn btn-white btn-sm" onclick="_exportComprasCsv()">Exportar CSV</button>
       </div>
     </div>
 
+    ${_renderComprasTabs(activeTab)}
+
+    ${activeTab === 'catalogo' ? _renderComprasCatalogTab() : `
     <div class="kpi-grid">
       <div class="kpi-card kpi-orange">
         <div class="kpi-num">${analytics.summary.critical}</div>
@@ -97,7 +105,30 @@ function renderCompras() {
         ${_renderComprasSetupGaps(analytics.rows)}
       </div>
     </div>
+    `}
   `;
+}
+
+function _renderComprasTabs(activeTab) {
+  return `
+    <div class="tabs compras-tabs">
+      <button class="tab ${activeTab === 'analise' ? 'active' : ''}" onclick="_setComprasTab('analise')">Analise de Compra</button>
+      <button class="tab ${activeTab === 'catalogo' ? 'active' : ''}" onclick="_setComprasTab('catalogo')">Catalogo de SKU</button>
+    </div>
+  `;
+}
+
+function _setComprasTab(tab) {
+  _ensureComprasState();
+  appState.filters.compras.tab = tab === 'catalogo' ? 'catalogo' : 'analise';
+  renderCompras();
+}
+
+function _renderComprasCatalogTab() {
+  if (typeof _renderSkusCatalogHtml === 'function') {
+    return _renderSkusCatalogHtml({ embedded: true });
+  }
+  return '<div class="tbl-empty">Catalogo de SKU indisponivel.</div>';
 }
 
 function _updateComprasSearch(value) {
@@ -120,7 +151,7 @@ function _ensureComprasState() {
 
 function _defaultComprasFilters() {
   const cfg = _normalizeComprasConfig(appState.comprasConfig);
-  return { q: '', status: '', horizonDays: parseInt(cfg.global.horizonDays, 10) || 30 };
+  return { q: '', status: '', horizonDays: parseInt(cfg.global.horizonDays, 10) || 30, tab: 'analise' };
 }
 
 function _normalizeComprasConfig(raw) {
@@ -798,6 +829,126 @@ async function _saveComprasSkuConfig(sku) {
     console.error('Falha ao salvar config de compras:', err);
     showToast('Erro ao salvar configuracao de compras.', 'error');
   }
+}
+
+function _openComprasEntradaModal() {
+  const skuOptions = (appState.skus || [])
+    .slice()
+    .sort((a, b) => String(a.desc || a.code).localeCompare(String(b.desc || b.code), 'pt-BR'));
+
+  openModal('Entrada Manual de SKU', `
+    <div class="form-group">
+      <label class="form-label">Descricao do SKU</label>
+      <select class="form-control" id="entradaSkuSelect" onchange="_selectComprasEntradaSku(this.value)">
+        <option value="">Selecione um SKU...</option>
+        ${skuOptions.map(s => `<option value="${_comprasEsc(s.code)}">${_comprasEsc(s.desc || s.code)} · ${_comprasEsc(s.code)}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="entrada-sku-info" id="entradaSkuInfo">
+      ${_renderComprasEntradaSkuInfo(null)}
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Comprimento recebido (m)</label>
+        <input type="number" step="0.001" min="0" class="form-control" id="entradaComprimento" placeholder="Ex: 6.000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Qtd. barras</label>
+        <input type="number" step="1" min="1" class="form-control" id="entradaQuantidade" placeholder="Ex: 20">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">Observacao</label>
+      <textarea class="form-control" id="entradaObs" rows="2" placeholder="Opcional"></textarea>
+    </div>
+  `, `
+    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-green" onclick="_saveComprasEntrada()">Salvar Entrada</button>
+  `);
+}
+
+function _selectComprasEntradaSku(code) {
+  const sku = (appState.skus || []).find(s => s.code === code) || null;
+  const info = document.getElementById('entradaSkuInfo');
+  if (info) info.innerHTML = _renderComprasEntradaSkuInfo(sku);
+
+  const lenInput = document.getElementById('entradaComprimento');
+  if (lenInput && sku && !lenInput.value) {
+    const primary = (sku.dims || []).slice().sort((a, b) => (b.qty || 0) - (a.qty || 0) || (b.dim || 0) - (a.dim || 0))[0];
+    if (primary && primary.dim) lenInput.value = _comprasMValue(primary.dim);
+  }
+}
+
+function _renderComprasEntradaSkuInfo(sku) {
+  if (!sku) {
+    return `
+      <div class="entrada-sku-field"><span>Codigo SKU</span><b>-</b></div>
+      <div class="entrada-sku-field"><span>Nome resumido</span><b>-</b></div>
+      <div class="entrada-sku-field"><span>Pasta</span><b>-</b></div>
+      <div class="entrada-sku-stock"><span>Saldo atual</span><div class="compras-chips"><span>selecione um SKU</span></div></div>
+    `;
+  }
+
+  const dims = (sku.dims || []).filter(d => _comprasInt(d.qty, 0) > 0 || _comprasInt(d.dim, 0) > 0);
+  return `
+    <div class="entrada-sku-field"><span>Codigo SKU</span><b>${_comprasEsc(sku.code)}</b></div>
+    <div class="entrada-sku-field"><span>Nome resumido</span><b>${_comprasEsc(sku.short_desc || '-')}</b></div>
+    <div class="entrada-sku-field"><span>Pasta</span><b>${_comprasEsc(sku.folder || '-')}</b></div>
+    <div class="entrada-sku-stock">
+      <span>Saldo atual</span>
+      <div class="compras-chips">${dims.length ? dims.map(d => `<span>${fmtM(d.dim)} · ${_comprasInt(d.qty, 0)}x</span>`).join('') : '<span>sem estoque</span>'}</div>
+    </div>
+  `;
+}
+
+async function _saveComprasEntrada() {
+  const code = document.getElementById('entradaSkuSelect')?.value || '';
+  const sku = (appState.skus || []).find(s => s.code === code);
+  if (!sku) { showToast('Selecione um SKU valido.', 'error'); return; }
+
+  const lengthMm = _comprasMetersToMm(document.getElementById('entradaComprimento')?.value, 0);
+  const qty = Math.max(0, _comprasInt(document.getElementById('entradaQuantidade')?.value, 0));
+  const obs = document.getElementById('entradaObs')?.value.trim() || '';
+
+  if (!lengthMm) { showToast('Informe o comprimento recebido.', 'error'); return; }
+  if (!qty) { showToast('Informe a quantidade de barras recebidas.', 'error'); return; }
+
+  const dims = Array.isArray(sku.dims) ? sku.dims : [];
+  const existing = dims.find(d => Math.abs(_comprasInt(d.dim, 0) - lengthMm) <= 1);
+  if (existing) {
+    existing.qty = Math.max(0, _comprasInt(existing.qty, 0)) + qty;
+    existing.dim = lengthMm;
+  } else {
+    dims.push({ dim: lengthMm, qty });
+  }
+  sku.dims = _comprasNormalizeSkuDims(dims);
+
+  try {
+    await DB.saveSku(sku);
+    await DB.log("Entrada manual de SKU", "unilux_skus", `${sku.code}: +${qty} barra(s) de ${fmtM(lengthMm)}${obs ? ` · ${obs}` : ''}`);
+    closeModal();
+    showToast('Entrada registrada no estoque!', 'success');
+    renderCompras();
+  } catch (err) {
+    console.error('Falha ao registrar entrada:', err);
+    showToast('Erro ao salvar entrada no banco.', 'error');
+  }
+}
+
+function _comprasNormalizeSkuDims(dims) {
+  const merged = [];
+  (dims || []).forEach(d => {
+    const dim = _comprasInt(d.dim, 0);
+    const qty = Math.max(0, _comprasInt(d.qty, 0));
+    if (!dim) return;
+    const current = merged.find(item => Math.abs(item.dim - dim) <= 1);
+    if (current) current.qty += qty;
+    else merged.push({ dim, qty });
+  });
+  return merged.sort((a, b) => b.dim - a.dim);
 }
 
 function _exportComprasCsv() {

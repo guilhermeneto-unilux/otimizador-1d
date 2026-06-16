@@ -2,12 +2,29 @@
 
 function renderSkus() {
   const content = document.getElementById('contentArea');
+  content.innerHTML = _renderSkusCatalogHtml();
+}
+
+function _renderSkusCatalogHtml(options = {}) {
+  const embedded = Boolean(options.embedded);
   const q       = (appState.filters.skus || '').toLowerCase();
   
   const filteredRows = _skusFilteredRows(q);
   const rows = _skusRows(filteredRows);
 
-  content.innerHTML = `
+  return `
+    ${embedded ? `
+      <div class="compras-catalog-head">
+        <div>
+          <div class="compras-panel-title">Catalogo e Estoque Virgem</div>
+          <div class="compras-panel-subtitle">${appState.skus.length} perfis cadastrados no estoque de barras virgens.</div>
+        </div>
+        <button class="btn btn-green" onclick="_newSkuModal()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Novo Perfil & Estoque
+        </button>
+      </div>
+    ` : `
     <div class="pg-header">
       <div>
         <div class="pg-eyebrow">${appState.skus.length} perfis cadastrados</div>
@@ -18,9 +35,10 @@ function renderSkus() {
         Novo Perfil & Estoque
       </button>
     </div>
+    `}
 
     <!-- BARRA DE BUSCA -->
-    <div class="search-bar-card" style="margin-top:24px;">
+    <div class="search-bar-card" style="${embedded ? '' : 'margin-top:24px;'}">
       <div class="search-input-group">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <input type="text" class="form-control"
@@ -46,7 +64,7 @@ function renderSkus() {
           </tr>
         </thead>
         <tbody id="skusRowsBody">
-          ${rows.length ? rows : '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
+          ${rows.length ? rows : '<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -111,7 +129,7 @@ function _updateSkusSearch(value) {
   const rows = _skusRows(filteredRows);
 
   const body = document.getElementById('skusRowsBody');
-  if (body) body.innerHTML = rows || '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>';
+  if (body) body.innerHTML = rows || '<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>';
 
   const stats = document.getElementById('skusSearchStats');
   if (stats) {
@@ -123,28 +141,26 @@ function _updateSkusSearch(value) {
 function _getSkuFormHtml(sku = null) {
   const code = sku ? sku.code : '';
   const desc = sku ? sku.desc : '';
-  
-  // Extrai até 3 dimensões (se não tiver, deixa vazio)
-  const d1 = sku && sku.dims && sku.dims[0] ? sku.dims[0] : {dim:'', qty:''};
-  const d2 = sku && sku.dims && sku.dims[1] ? sku.dims[1] : {dim:'', qty:''};
-  const d3 = sku && sku.dims && sku.dims[2] ? sku.dims[2] : {dim:'', qty:''};
+  const dims = sku && Array.isArray(sku.dims) && sku.dims.length
+    ? sku.dims
+    : [{ dim: '', qty: '' }, { dim: '', qty: '' }, { dim: '', qty: '' }];
 
   return `
     <div class="form-group">
       <label class="form-label">Código SKU (Ex: PER-40X40)</label>
-      <input type="text" class="form-control" id="skCode" value="${code}" ${sku ? 'disabled' : ''} style="text-transform:uppercase;">
+      <input type="text" class="form-control" id="skCode" value="${_uiEscAttr(code)}" ${sku ? 'disabled' : ''} style="text-transform:uppercase;">
     </div>
     <div class="form-group">
       <label class="form-label">Descrição Comercial</label>
-      <input type="text" class="form-control" id="skDesc" value="${desc}">
+      <input type="text" class="form-control" id="skDesc" value="${_uiEscAttr(desc)}">
     </div>
     <div class="form-group">
       <label class="form-label">Nome Resumido do Perfil</label>
-      <input type="text" class="form-control" id="skShortDesc" value="${sku && sku.short_desc ? sku.short_desc : ''}">
+      <input type="text" class="form-control" id="skShortDesc" value="${_uiEscAttr(sku && sku.short_desc ? sku.short_desc : '')}">
     </div>
     <div class="form-group">
       <label class="form-label">Pasta</label>
-      <input type="text" class="form-control" id="skFolder" value="${sku && sku.folder ? sku.folder : ''}">
+      <input type="text" class="form-control" id="skFolder" value="${_uiEscAttr(sku && sku.folder ? sku.folder : '')}">
     </div>
     <div class="form-group">
       <label class="form-label">Sobra Mínima para Guarda (m) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
@@ -152,58 +168,66 @@ function _getSkuFormHtml(sku = null) {
     </div>
 
     <div style="margin:24px 0 16px; border-bottom:1px solid var(--border);">
-      <span style="font-size:12px; font-weight:700; color:var(--text-400); text-transform:uppercase;">Medidas & Estoque (Até 3 tamanhos por SKU)</span>
+      <span style="font-size:12px; font-weight:700; color:var(--text-400); text-transform:uppercase;">Medidas & Estoque</span>
     </div>
 
-    <!-- MEDIDA 1 -->
-    <div style="display:flex; gap:16px;">
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Comprimento 1 (m)</label>
-        <input type="number" class="form-control" id="skDim1" value="${d1.dim ? (d1.dim / 1000) : ''}" placeholder="Ex: 6.000">
-      </div>
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Qtd Barras 1</label>
-        <input type="number" class="form-control" id="skQty1" value="${d1.qty}" placeholder="Ex: 50">
-      </div>
+    <div class="sku-dims-rows" id="skuDimsRows">
+      ${dims.map(d => _getSkuDimRowHtml(d)).join('')}
     </div>
 
-    <!-- MEDIDA 2 -->
-    <div style="display:flex; gap:16px;">
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Comprimento 2 (m) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
-        <input type="number" step="0.001" class="form-control" id="skDim2" value="${d2.dim ? (d2.dim / 1000) : ''}">
-      </div>
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Qtd Barras 2</label>
-        <input type="number" class="form-control" id="skQty2" value="${d2.qty}">
-      </div>
-    </div>
+    <button class="btn btn-white btn-sm" onclick="_addSkuDimRow()">Adicionar comprimento</button>
+  `;
+}
 
-    <!-- MEDIDA 3 -->
-    <div style="display:flex; gap:16px; margin-bottom:0;">
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Comprimento 3 (m) <span style="font-weight:400; color:var(--text-400);">(opcional)</span></label>
-        <input type="number" step="0.001" class="form-control" id="skDim3" value="${d3.dim ? (d3.dim / 1000) : ''}">
+function _getSkuDimRowHtml(dim = {}) {
+  const len = dim && dim.dim ? (dim.dim / 1000).toFixed(3) : '';
+  const qty = dim && dim.qty !== undefined ? dim.qty : '';
+  return `
+    <div class="sku-dim-row">
+      <div class="form-group">
+        <label class="form-label">Comprimento (m)</label>
+        <input type="number" step="0.001" class="form-control sku-dim-input" value="${_uiEscAttr(len)}" placeholder="Ex: 6.000">
       </div>
-      <div class="form-group" style="flex:1;">
-        <label class="form-label">Qtd Barras 3</label>
-        <input type="number" class="form-control" id="skQty3" value="${d3.qty}">
+      <div class="form-group">
+        <label class="form-label">Qtd Barras</label>
+        <input type="number" step="1" class="form-control sku-qty-input" value="${_uiEscAttr(qty)}" placeholder="Ex: 50">
       </div>
+      <button class="btn btn-white btn-sm sku-dim-remove" onclick="_removeSkuDimRow(this)" aria-label="Remover comprimento">×</button>
     </div>
   `;
 }
 
+function _addSkuDimRow() {
+  const rows = document.getElementById('skuDimsRows');
+  if (rows) rows.insertAdjacentHTML('beforeend', _getSkuDimRowHtml());
+}
+
+function _removeSkuDimRow(button) {
+  const row = button.closest('.sku-dim-row');
+  if (!row) return;
+  const rows = document.querySelectorAll('#skuDimsRows .sku-dim-row');
+  if (rows.length <= 1) {
+    row.querySelectorAll('input').forEach(input => { input.value = ''; });
+    return;
+  }
+  row.remove();
+}
+
 function _extractDimsFromForm() {
   const dims = [];
-  for (let i=1; i<=3; i++) {
-    const val = String(document.getElementById('skDim'+i).value);
+  document.querySelectorAll('#skuDimsRows .sku-dim-row').forEach(row => {
+    const dimInput = row.querySelector('.sku-dim-input');
+    const qtyInput = row.querySelector('.sku-qty-input');
+    if (!dimInput || !qtyInput) return;
+    const val = String(dimInput.value);
     const d = Math.round(parseFloat(val.replace(',', '.')) * 1000);
-    const q = parseInt(document.getElementById('skQty'+i).value);
+    const q = parseInt(qtyInput.value);
     if (!isNaN(d) && d > 0 && !isNaN(q) && q >= 0) {
       dims.push({ dim: d, qty: q });
     }
-  }
-  return dims; 
+  });
+  if (typeof _comprasNormalizeSkuDims === 'function') return _comprasNormalizeSkuDims(dims);
+  return dims;
 }
 
 function _newSkuModal() {
@@ -239,7 +263,7 @@ async function _salvarSku() {
     await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
     closeModal(); 
     showToast('Perfil salvo com sucesso!', 'success'); 
-    renderSkus();
+    _refreshSkusView();
   } catch (err) {
     console.error('Falha ao salvar SKU:', err);
     showToast('Falha ao salvar no banco. Verifique sua conexão.', 'error');
@@ -289,7 +313,7 @@ async function _saveEditSku(id) {
     
     closeModal(); 
     showToast('Estoque atualizado!', 'success'); 
-    renderSkus();
+    _refreshSkusView();
   } catch (err) {
     console.error('Falha ao atualizar SKU:', err);
     showToast('Erro ao atualizar o banco de dados. Detalhes: ' + (err.message || JSON.stringify(err)), 'error');
@@ -301,5 +325,13 @@ async function _deleteSku(id) {
   await DB.deleteSku(id);
   await DB.log("Removeu SKU", "unilux_skus", id);
   showToast('SKU removido.', 'info'); 
-  closeModal(); renderSkus();
+  closeModal(); _refreshSkusView();
+}
+
+function _refreshSkusView() {
+  if (appState.currentRoute === 'compras') {
+    renderCompras();
+  } else {
+    renderSkus();
+  }
 }

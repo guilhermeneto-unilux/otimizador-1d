@@ -178,7 +178,8 @@ const DB = {
       desc: s.desc, 
       dims: s.dims, 
       min_sobra: s.min_sobra,
-      short_desc: s.short_desc || ''
+      short_desc: s.short_desc || '',
+      folder: s.folder || ''
     };
     const { error } = await supabaseClient.from('unilux_skus').upsert(dbObj);
     if (error) {
