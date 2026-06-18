@@ -6,13 +6,15 @@ function renderOrdens() {
 
   const pending  = appState.ordens.filter(o => o.status === 'pending');
   const inBatch  = appState.ordens.filter(o => o.status === 'in_batch');
+  const pendingPieces = _ordensPieceTotal(pending);
+  const inBatchPieces = _ordensPieceTotal(inBatch);
 
   const filtered = _ordensFilteredList(tab, q);
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
       <div>
-        <div class="pg-eyebrow">${pending.length} pendente(s) · ${inBatch.length} em lote</div>
+        <div class="pg-eyebrow">${pending.length} OP(s) pendente(s) / ${pendingPieces} peça(s) · ${inBatch.length} OP(s) em lote / ${inBatchPieces} peça(s)</div>
         <h1 class="pg-title">Ordens de Produção</h1>
       </div>
       <div class="pg-actions">
@@ -36,8 +38,8 @@ function renderOrdens() {
     </div>
 
     <div class="tabs" style="margin-bottom:0; border-bottom:0; border-radius:8px 8px 0 0;">
-      <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length})</span>
-      <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length})</span>
+      <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length} OPs / ${pendingPieces} pç)</span>
+      <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length} OPs / ${inBatchPieces} pç)</span>
       ${tab === 'batch' && inBatch.length > 0 
         ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--red); border:1px solid #fee2e2; font-weight:700;" onclick="_reverterTodasOrdens()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -73,6 +75,10 @@ function renderOrdens() {
       </table>
     </div>
   `;
+}
+
+function _ordensPieceTotal(list) {
+  return (list || []).reduce((sum, o) => sum + (Number(o.qty) || 0), 0);
 }
 
 function _ordensFilteredList(tab = (appState._ordensTab || 'pending'), q = (appState.filters.ordens || '').toLowerCase()) {
@@ -284,9 +290,9 @@ function _novaOrdemModal() {
   `);
 }
 
-function _salvarOrdem() {
+async function _salvarOrdem() {
   let rawId   = document.getElementById('opId').value.trim();
-  const sku   = document.getElementById('opSku').value.trim();
+  const sku   = _canonicalSku(document.getElementById('opSku').value.trim());
   const dim   = Math.round(parseFloat(document.getElementById('opDim').value.replace(',', '.')) * 1000);
   const qty   = parseInt(document.getElementById('opQty').value);
   const cliente = document.getElementById('opCliente').value || 'Geral';
@@ -294,10 +300,10 @@ function _salvarOrdem() {
   
   if (!rawId) { showToast('Preencha o número da OP!', 'error'); return; }
   if (!sku) { showToast('Selecione um SKU/Material!', 'error'); return; }
-  if (!dim || !qty) { showToast('Preencha dimensão e quantidade!', 'error'); return; }
+  if (!dim || dim <= 0 || !Number.isInteger(qty) || qty <= 0) { showToast('Preencha dimensão e quantidade válidas!', 'error'); return; }
   
   // Validar que o SKU existe no catálogo
-  const skuExists = appState.skus.some(s => s.code === sku);
+  const skuExists = _skuExists(sku);
   if (!skuExists) { showToast('SKU não encontrado no catálogo!', 'error'); return; }
   
   // Formatar o ID: adicionar prefixo OP- se o usuário não colocou
@@ -308,17 +314,28 @@ function _salvarOrdem() {
   if (appState.ordens.some(o => o.id === id)) { showToast(`Ordem ${id} já existe!`, 'error'); return; }
   
   const novaOrdem = { id, sku, dim, qty, cliente, entrega, status: 'pending', lote: null };
-  appState.ordens.push(novaOrdem);
-  DB.saveOrdem(novaOrdem);
+  try {
+    await DB.saveOrdem(novaOrdem);
+    appState.ordens.push(novaOrdem);
+  } catch (err) {
+    console.error('Erro ao salvar ordem:', err);
+    showToast('Erro ao salvar OP no banco.', 'error');
+    return;
+  }
   
   closeModal();
   showToast(`Ordem ${id} criada!`, 'success');
   renderOrdens(); updateBadges();
 }
 
-function _criarLote() {
+async function _criarLote() {
   const sel = [...new Set([...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id))];
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
+  const validation = _validateOrdensParaLote(sel);
+  if (!validation.ok) {
+    _showLoteValidationReport(validation);
+    return;
+  }
   
   // Solicitar número do lote ao usuário
   const userLoteId = prompt('Digite o número/nome do lote:');
@@ -329,20 +346,86 @@ function _criarLote() {
   // Verificar duplicata
   if (appState.lotes.some(l => l.id === id)) { showToast(`Lote "${id}" já existe!`, 'error'); return; }
 
-  const skus = [...new Set(sel.map(oid => appState.ordens.find(o => o.id === oid)?.sku).filter(Boolean))];
+  const skus = [...new Set(validation.ordens.map(o => o.sku).filter(Boolean))];
   if (!skus.length) { showToast('Erro ao identificar SKUs!', 'error'); return; }
   const loteObj = { id, ordens: sel, skus, criacao: new Date().toISOString().split('T')[0], status: 'pending' };
-  appState.lotes.push(loteObj);
-  DB.saveLote(loteObj);
-  appState.ordens.forEach(o => { 
-    if(sel.includes(o.id)) { 
-      o.status = 'in_batch'; 
-      o.lote = id; 
-      DB.saveOrdem(o);
-    } 
+  const previous = validation.ordens.map(o => ({ o, status: o.status, lote: o.lote }));
+  try {
+    appState.lotes.push(loteObj);
+    await DB.saveLote(loteObj);
+    for (const o of validation.ordens) {
+      o.status = 'in_batch';
+      o.lote = id;
+      await DB.saveOrdem(o);
+    }
+    showToast(`Lote ${id} criado!`, 'success');
+    navigate('otimizador');
+  } catch (err) {
+    appState.lotes = appState.lotes.filter(l => l.id !== id);
+    previous.forEach(p => {
+      p.o.status = p.status;
+      p.o.lote = p.lote;
+    });
+    console.error('Erro ao criar lote:', err);
+    showToast('Erro ao salvar lote no banco. Nada foi enviado para otimização.', 'error');
+  }
+}
+
+function _validateOrdensParaLote(ids) {
+  const errors = [];
+  const ordens = ids.map(id => appState.ordens.find(o => o.id === id)).filter(Boolean);
+  if (ordens.length !== ids.length) {
+    const foundIds = new Set(ordens.map(o => o.id));
+    ids.filter(id => !foundIds.has(id)).forEach(id => errors.push({ op: id, reason: 'OP selecionada não existe mais no sistema' }));
+  }
+
+  ordens.forEach(o => {
+    const qty = Number(o.qty);
+    const dim = Number(o.dim);
+    if (o.status !== 'pending') errors.push({ op: o.id, reason: `status inválido para lote: ${o.status}` });
+    if (!Number.isInteger(qty) || qty <= 0) errors.push({ op: o.id, reason: 'quantidade inválida' });
+    if (!Number.isFinite(dim) || dim <= 0) errors.push({ op: o.id, reason: 'medida de corte inválida' });
+    if (!_skuExists(o.sku)) errors.push({ op: o.id, reason: `SKU não cadastrado: ${o.sku || '-'}` });
   });
-  showToast(`Lote ${id} criado!`, 'success');
-  navigate('otimizador');
+
+  const byLogicalOp = new Map();
+  ordens.forEach(o => {
+    const key = _opLogicalKey(o.id);
+    if (!key) return;
+    if (!byLogicalOp.has(key)) byLogicalOp.set(key, []);
+    byLogicalOp.get(key).push(o.id);
+  });
+  [...byLogicalOp.values()].filter(list => list.length > 1).forEach(list => {
+    errors.push({ op: list.join(' + '), reason: 'mesma OP lógica selecionada mais de uma vez' });
+  });
+
+  return { ok: errors.length === 0, errors, ordens };
+}
+
+function _opLogicalKey(value) {
+  return String(_normalizeOpId(value)).replace(/^OP-/, '').replace(/[\s-]+/g, '');
+}
+
+function _showLoteValidationReport(validation) {
+  const rows = validation.errors.map(e => `
+    <tr>
+      <td>${_uiEsc(e.op || '-')}</td>
+      <td>${_uiEsc(e.reason || '')}</td>
+    </tr>
+  `).join('');
+  openModal('Lote bloqueado', `
+    <div style="background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; font-weight:700;">
+      Nenhum lote foi criado. Corrija as OPs abaixo antes de otimizar.
+    </div>
+    <div class="tbl-wrap" style="max-height:260px; overflow:auto;">
+      <table class="tbl">
+        <thead><tr><th>OP</th><th>Motivo</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `, `
+    <button class="btn btn-dark" onclick="closeModal()">OK</button>
+  `);
 }
 
 async function _deleteOrdem(id) {
@@ -454,110 +537,37 @@ async function _handleExcelUpload(e) {
   showToast('Lendo arquivo, aguarde...', 'info');
 
   const reader = new FileReader();
-  reader.onload = async function(e) {
+  reader.onload = async function(ev) {
     try {
-      const data = new Uint8Array(e.target.result);
+      const data = new Uint8Array(ev.target.result);
       const workbook = window.XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
+      const result = _prepareOrdensImport(rows, { sourceName: file.name || 'planilha' });
+
+      if (!result.ok) {
+        _showImportReport(result);
+        return;
+      }
 
       const clearFirst = confirm("Deseja LIMPAR a lista de ordens pendentes atual antes de importar?\n\n(Clique em CANCELAR para apenas ADICIONAR as novas ordens)");
-      if (clearFirst) {
-        const pendingToClear = appState.ordens
-          .filter(o => o.status === 'pending')
-          .map(o => o.id);
-
-        // Remove only pending orders (keep those in batch)
-        appState.ordens = appState.ordens.filter(o => o.status !== 'pending');
-        for (const id of pendingToClear) {
-          await DB.deleteOrdem(id);
-        }
-      }
-
-      let count = 0;
-      const importedIds = new Set();
-      
-      // Itera a partir da linha index 1 assumindo que 0 tem cabeçalho
-      // Mas checa todas as linhas para ver se têm dados mínimos válidos
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r || !r.length) continue;
-
-        // Expectation:
-        // 0: MRP, 1: OP, 2: Qtd, 3: Nr Pedido, 4: Nr Ped Cli, 5: SKU, 6: Etiqueta, 7: Subclasse, 8: Entrega, 9: Obs, 10: Dim
-        const rawQty = parseInt(r[2], 10);
-        const rawSku = String(r[5] || '').trim();
-        // Converte Largura (m) da Planilha para milímetros (int)
-        const rawDim = Math.round(parseFloat(String(r[10]).replace(',', '.')) * 1000);
-
-        // Validação: só importa linhas que tiverem número em Largura e Quantidade, e algum Sku
-        if (isNaN(rawDim) || isNaN(rawQty) || rawDim <= 0 || rawQty <= 0 || !rawSku) {
-           continue; 
-        }
-
-        const opId = String(r[1] || '').trim();
-        const finalId = _normalizeOpId(opId) || `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
-        const clienteStr = String(r[4] || '').trim();
-        
-        let entrega = '';
-        if (r[8]) {
-          // Se o excel mandar como número serial, a lib do SheetJS às vezes extrai numero
-          if (typeof r[8] === 'number') {
-             entrega = new Date((r[8] - (25567 + 2)) * 86400 * 1000).toISOString().split('T')[0];
-          } else {
-             entrega = String(r[8]).split(' ')[0]; // Pega a parte da data
-          }
-        }
-
-        const novaOrdem = {
-          id: finalId,
-          sku: rawSku,
-          dim: rawDim,
-          qty: rawQty,
-          cliente: clienteStr || 'Planilha',
-          entrega: entrega || new Date().toISOString().split('T')[0],
-          status: 'pending',
-          lote: null,
-          _meta: {
-             mrp: r[0] || '',
-             op_original: r[1] || '',
-             pedido: r[3] || '',
-             etiqueta: r[6] || '',
-             subclasse: r[7] || '',
-             obs: r[9] || ''
-          }
-        };
-
-        const existingIdx = appState.ordens.findIndex(o => o.id === finalId);
-        if (existingIdx !== -1) {
-          appState.ordens[existingIdx] = novaOrdem;
-        } else {
-          appState.ordens.push(novaOrdem);
-        }
-        
-        DB.saveOrdem(novaOrdem); 
-        if (!importedIds.has(finalId)) count++;
-        importedIds.add(finalId);
-      }
-      
-      DB.saveConfig(appState.configs);
-
-      showToast(`Importação concluída! ${count} OPs carregadas.`, 'success');
-      DB.log("Importou Planilha", "unilux_ordens", `${count} ordens importadas`);
-      
+      await _commitOrdensImport(result, {
+        clearFirst,
+        successMessage: 'Importação concluída!',
+        logAction: 'Importou Planilha'
+      });
     } catch (err) {
       console.error(err);
       showToast('Erro ao processar arquivo Excel. Verifique o formato.', 'error');
     } finally {
-      // reseta o input
       const fileInput = document.getElementById('opExcelFile');
       if (fileInput) fileInput.value = '';
-      renderOrdens(); 
+      renderOrdens();
       updateBadges();
     }
   };
-  
+
   reader.readAsArrayBuffer(file);
 }
 
@@ -595,107 +605,335 @@ function _openColarExcelModal() {
   `);
 }
 
-function _processarColarExcel() {
+async function _processarColarExcel() {
   const text = document.getElementById('pasteExcelArea').value;
   if (!text || !text.trim()) { showToast('Nenhum dado colado!', 'error'); return; }
 
-  const lines = text.trim().split('\\n');
+  const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) { showToast('Cole o cabeçalho e pelo menos uma linha de dados.', 'error'); return; }
 
-  // Normalize header
-  const header = lines[0].split('\\t').map(h => h.trim().toLowerCase());
-  
-  // Find required index
-  const idxQty = header.indexOf('quantidade');
-  const idxSku = header.indexOf('sku_codigo');
-  const idxDim = header.indexOf('largura_corte');
-
-  if (idxQty === -1 || idxSku === -1 || idxDim === -1) {
-    showToast('Faltam colunas obrigatórias: quantidade, sku_codigo, largura_corte', 'error');
+  const rows = lines.map(line => line.split('\t'));
+  const result = _prepareOrdensImport(rows, { sourceName: 'texto colado' });
+  if (!result.ok) {
+    _showImportReport(result);
     return;
   }
 
-  const idxOp = header.indexOf('op_codigo');
-  const idxCliente = header.indexOf('nome_cliente');
-  const idxEntrega = header.indexOf('data_entrega');
-  const idxMrp = header.indexOf('mrp');
-  const idxPedido = header.indexOf('numero_pedido_cliente');
-  const idxObs = header.indexOf('observacao');
-  const idxEtiqueta = header.indexOf('numero_etiqueta');
+  closeModal();
+  await _commitOrdensImport(result, {
+    clearFirst: false,
+    successMessage: 'Importação concluída!',
+    logAction: 'Importou Texto Excel'
+  });
+  renderOrdens();
+  updateBadges();
+}
 
-  let count = 0;
-  const importedIds = new Set();
-  for (let i = 1; i < lines.length; i++) {
-    const r = lines[i].split('\\t');
-    // Allow lines that don't have exactly the same length if they have at least up to the required columns
-    const maxReq = Math.max(idxQty, idxSku, idxDim);
-    if (!r || r.length <= maxReq) continue;
+const OP_IMPORT_ALIASES = {
+  op: ['op', 'opcodigo', 'op_codigo', 'numeroop', 'numero_op', 'ordemproducao', 'ordem_producao', 'ordemdeproducao'],
+  qty: ['quantidade', 'qtd', 'qtde', 'qtdpecas', 'qtd_pecas', 'qtdpeca', 'pecas'],
+  sku: ['sku', 'skucodigo', 'sku_codigo', 'codigosku', 'codigo_sku', 'codigoitem', 'codigo_item', 'codigoproduto', 'codigo_produto', 'material', 'perfil'],
+  dim: ['larguracorte', 'largura_corte', 'dimensaocorte', 'dimensao_corte', 'medidacorte', 'medida_corte', 'medida', 'comprimento', 'comprimentocorte', 'largura'],
+  cliente: ['nomecliente', 'nome_cliente', 'cliente', 'nrpedcli', 'pedido_cliente', 'numero_pedido_cliente'],
+  entrega: ['dataentrega', 'data_entrega', 'entrega', 'dtentrega'],
+  mrp: ['mrp'],
+  pedido: ['numeropedido', 'numero_pedido', 'pedido', 'nrpedido'],
+  etiqueta: ['numeroetiqueta', 'numero_etiqueta', 'etiqueta'],
+  subclasse: ['subclasse'],
+  obs: ['observacao', 'observacao_', 'obs']
+};
 
-    const rawQty = parseInt(r[idxQty] || '', 10);
-    const rawSku = String(r[idxSku] || '').trim();
-    
-    // Converte Largura da Planilha para milímetros (int)
-    let rawDimVal = parseFloat(String(r[idxDim] || '').replace(',', '.'));
-    let rawDim = 0;
-    if (!isNaN(rawDimVal)) {
-      // Se for > 100, assumimos que já foi colado em mm
-      if (rawDimVal > 100) {
-        rawDim = Math.round(rawDimVal);
-      } else {
-        // Se <= 100, assumimos que está em metros e multiplicamos
-        rawDim = Math.round(rawDimVal * 1000);
-      }
-    }
+const OP_LEGACY_COLUMNS = {
+  mrp: 0,
+  op: 1,
+  qty: 2,
+  pedido: 3,
+  cliente: 4,
+  sku: 5,
+  etiqueta: 6,
+  subclasse: 7,
+  entrega: 8,
+  obs: 9,
+  dim: 10
+};
 
-    if (isNaN(rawDim) || isNaN(rawQty) || rawDim <= 0 || rawQty <= 0 || !rawSku) {
+function _prepareOrdensImport(rows, opts = {}) {
+  const sourceName = opts.sourceName || 'importação';
+  const headerInfo = _detectImportColumns(rows);
+  const columns = headerInfo.columns;
+  const startIdx = headerInfo.headerRow >= 0 ? headerInfo.headerRow + 1 : 0;
+  const errors = [];
+  const warnings = [];
+  const grouped = new Map();
+  let sourceRows = 0;
+  let blankRows = 0;
+
+  for (let i = startIdx; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const lineNo = i + 1;
+    if (!_rowHasContent(row)) {
+      blankRows++;
       continue;
     }
 
-    const opIdStr = idxOp !== -1 ? String(r[idxOp] || '').trim() : '';
-    const finalId = _normalizeOpId(opIdStr) || `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
-    
-    const clienteStr = idxCliente !== -1 ? String(r[idxCliente] || '').trim() : '';
-    let entrega = idxEntrega !== -1 ? String(r[idxEntrega] || '').trim() : '';
-    if (entrega && entrega.includes('/')) {
-      // Assuming DD/MM/YYYY
-      const parts = entrega.split('/');
-      if (parts.length === 3) entrega = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    const rawOp = _cell(row, columns.op);
+    const rawQty = _cell(row, columns.qty);
+    const rawSku = _cell(row, columns.sku);
+    const rawDim = _cell(row, columns.dim);
+    const id = _normalizeOpId(rawOp);
+    const qty = _parseImportQty(rawQty);
+    const dim = _parseImportDim(rawDim);
+    const sku = _canonicalSku(rawSku);
+    const rowErrors = [];
+
+    if (!id) rowErrors.push('OP vazia');
+    if (!Number.isInteger(qty) || qty <= 0) rowErrors.push('quantidade inválida');
+    if (!Number.isFinite(dim) || dim <= 0) rowErrors.push('medida de corte inválida');
+    if (!String(rawSku ?? '').trim()) {
+      rowErrors.push('SKU vazio');
+    } else if (!_skuExists(sku)) {
+      rowErrors.push(`SKU não cadastrado: ${rawSku}`);
     }
 
-    const novaOrdem = {
-      id: finalId,
-      sku: rawSku,
-      dim: rawDim,
-      qty: rawQty,
-      cliente: clienteStr || 'Planilha Colada',
+    if (rowErrors.length) {
+      errors.push({ line: lineNo, op: id || String(rawOp || '-'), reason: rowErrors.join(', ') });
+      continue;
+    }
+
+    sourceRows++;
+    const entrega = _parseImportDate(_cell(row, columns.entrega));
+    const rowOrder = {
+      id,
+      sku,
+      dim,
+      qty,
+      cliente: String(_cell(row, columns.cliente) || '').trim() || 'Planilha',
       entrega: entrega || new Date().toISOString().split('T')[0],
       status: 'pending',
       lote: null,
       _meta: {
-        mrp: idxMrp !== -1 ? String(r[idxMrp] || '') : '',
-        op_original: opIdStr,
-        pedido: idxPedido !== -1 ? String(r[idxPedido] || '') : '',
-        etiqueta: idxEtiqueta !== -1 ? String(r[idxEtiqueta] || '') : '',
-        subclasse: '',
-        obs: idxObs !== -1 ? String(r[idxObs] || '') : ''
+        mrp: String(_cell(row, columns.mrp) || ''),
+        op_original: String(rawOp || ''),
+        pedido: String(_cell(row, columns.pedido) || ''),
+        etiqueta: String(_cell(row, columns.etiqueta) || ''),
+        subclasse: String(_cell(row, columns.subclasse) || ''),
+        obs: String(_cell(row, columns.obs) || ''),
+        import_source: sourceName,
+        import_rows: [lineNo]
       }
     };
 
-    const existingIdx = appState.ordens.findIndex(o => o.id === finalId);
-    if (existingIdx !== -1) {
-      appState.ordens[existingIdx] = novaOrdem;
+    const existingGroup = grouped.get(id);
+    if (existingGroup) {
+      if (existingGroup.sku !== rowOrder.sku || existingGroup.dim !== rowOrder.dim) {
+        errors.push({
+          line: lineNo,
+          op: id,
+          reason: `OP repetida com SKU/medida diferente. Primeira: ${existingGroup.sku}/${fmtM(existingGroup.dim)}; linha ${lineNo}: ${rowOrder.sku}/${fmtM(rowOrder.dim)}`
+        });
+        continue;
+      }
+      existingGroup.qty += rowOrder.qty;
+      existingGroup._meta.import_rows.push(lineNo);
+      if (rowOrder._meta.etiqueta) {
+        existingGroup._meta.etiqueta = [existingGroup._meta.etiqueta, rowOrder._meta.etiqueta].filter(Boolean).join(', ');
+      }
+      warnings.push(`OP ${id} aparece mais de uma vez; quantidade somada para ${existingGroup.qty} pç.`);
     } else {
-      appState.ordens.push(novaOrdem);
+      grouped.set(id, rowOrder);
     }
-    
-    DB.saveOrdem(novaOrdem); 
-    if (!importedIds.has(finalId)) count++;
-    importedIds.add(finalId);
   }
 
-  DB.saveConfig(appState.configs);
-  closeModal();
-  showToast(`Importação concluída! ${count} OPs carregadas.`, 'success');
-  DB.log("Importou Texto Excel", "unilux_ordens", `${count} ordens coladas`);
-  renderOrdens(); updateBadges();
+  const orders = [...grouped.values()];
+  orders.forEach(order => {
+    const existing = appState.ordens.find(o => o.id === order.id);
+    if (!existing) return;
+    if (existing.status !== 'pending') {
+      errors.push({ line: '-', op: order.id, reason: `já existe no sistema com status "${existing.status}" no lote ${existing.lote || '-'}` });
+      return;
+    }
+    if (existing.sku !== order.sku || Number(existing.dim) !== Number(order.dim)) {
+      warnings.push(`OP ${order.id} pendente será atualizada de ${existing.sku}/${fmtM(existing.dim)} para ${order.sku}/${fmtM(order.dim)}.`);
+    }
+  });
+
+  if (!sourceRows && !errors.length) {
+    errors.push({ line: '-', op: '-', reason: 'nenhuma linha válida encontrada para importar' });
+  }
+
+  const totalPieces = orders.reduce((sum, o) => sum + Number(o.qty || 0), 0);
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    orders,
+    sourceRows,
+    blankRows,
+    totalPieces,
+    mergedRows: Math.max(0, sourceRows - orders.length),
+    headerMode: headerInfo.headerRow >= 0 ? `cabeçalho linha ${headerInfo.headerRow + 1}` : 'layout legado',
+    sourceName
+  };
+}
+
+function _detectImportColumns(rows) {
+  const maxRows = Math.min(rows.length, 12);
+  for (let i = 0; i < maxRows; i++) {
+    const header = (rows[i] || []).map(_normalizeImportHeader);
+    const columns = {};
+    Object.keys(OP_IMPORT_ALIASES).forEach(key => {
+      columns[key] = _findImportColumn(header, OP_IMPORT_ALIASES[key]);
+    });
+    if (columns.qty !== -1 && columns.sku !== -1 && columns.dim !== -1) {
+      return { headerRow: i, columns };
+    }
+  }
+  return { headerRow: -1, columns: { ...OP_LEGACY_COLUMNS } };
+}
+
+function _findImportColumn(header, aliases) {
+  return header.findIndex(h => aliases.includes(h));
+}
+
+function _normalizeImportHeader(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function _cell(row, idx) {
+  return idx === undefined || idx === -1 ? '' : row[idx];
+}
+
+function _rowHasContent(row) {
+  return (row || []).some(cell => String(cell ?? '').trim() !== '');
+}
+
+function _parseImportQty(value) {
+  const n = _parseImportNumber(value);
+  if (!Number.isFinite(n)) return NaN;
+  return Math.round(n);
+}
+
+function _parseImportDim(value) {
+  const n = _parseImportNumber(value);
+  if (!Number.isFinite(n) || n <= 0) return NaN;
+  return Math.round(n > 100 ? n : n * 1000);
+}
+
+function _parseImportNumber(value) {
+  if (typeof value === 'number') return value;
+  const raw = String(value ?? '').trim();
+  if (!raw) return NaN;
+  const cleaned = raw.replace(/[^\d,.-]/g, '');
+  if (!cleaned) return NaN;
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+  if (hasComma && hasDot) return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
+  if (hasComma) return parseFloat(cleaned.replace(',', '.'));
+  return parseFloat(cleaned);
+}
+
+function _parseImportDate(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value)) return value.toISOString().split('T')[0];
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date((value - 25569) * 86400 * 1000).toISOString().split('T')[0];
+  }
+  const raw = String(value).trim().split(' ')[0];
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (raw.includes('/')) {
+    const [d, m, y] = raw.split('/');
+    if (d && m && y) return `${y.padStart(4, '20')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return raw;
+}
+
+function _canonicalSku(rawSku) {
+  const raw = String(rawSku ?? '').trim();
+  const found = appState.skus.find(s => String(s.code || '').trim().toLowerCase() === raw.toLowerCase());
+  return found ? found.code : raw;
+}
+
+function _skuExists(sku) {
+  return appState.skus.some(s => String(s.code || '').trim().toLowerCase() === String(sku || '').trim().toLowerCase());
+}
+
+async function _commitOrdensImport(result, opts = {}) {
+  showToast('Validado. Salvando OPs...', 'info');
+  try {
+    if (opts.clearFirst) {
+      const pendingToClear = appState.ordens.filter(o => o.status === 'pending').map(o => o.id);
+      for (const id of pendingToClear) await DB.deleteOrdem(id);
+      appState.ordens = appState.ordens.filter(o => o.status !== 'pending');
+    }
+
+    for (const ordem of result.orders) {
+      const idx = appState.ordens.findIndex(o => o.id === ordem.id);
+      if (idx !== -1) appState.ordens[idx] = ordem;
+      else appState.ordens.push(ordem);
+      await DB.saveOrdem(ordem);
+    }
+
+    DB.saveConfig(appState.configs);
+    await DB.log(opts.logAction || 'Importou OPs', 'unilux_ordens', `${result.orders.length} OPs, ${result.totalPieces} peça(s), ${result.sourceRows} linha(s), ${result.mergedRows} linha(s) agrupada(s)`);
+    showToast(`${opts.successMessage || 'Importação concluída!'} ${result.orders.length} OPs / ${result.totalPieces} peça(s).`, 'success');
+    if (result.warnings.length || result.mergedRows) _showImportReport({ ...result, ok: true });
+  } catch (err) {
+    console.error('Erro ao salvar importação:', err);
+    showToast('Erro ao salvar OPs no banco. A importação foi interrompida.', 'error');
+  }
+}
+
+function _showImportReport(result) {
+  const statusTitle = result.ok ? 'Importação validada' : 'Importação bloqueada';
+  const statusColor = result.ok ? '#166534' : '#991b1b';
+  const statusBg = result.ok ? '#f0fdf4' : '#fef2f2';
+  const statusBorder = result.ok ? '#bbf7d0' : '#fecaca';
+  const errors = (result.errors || []).slice(0, 20).map(e => `
+    <tr>
+      <td>${_uiEsc(String(e.line))}</td>
+      <td>${_uiEsc(e.op || '-')}</td>
+      <td>${_uiEsc(e.reason || '')}</td>
+    </tr>
+  `).join('');
+  const warnings = (result.warnings || []).slice(0, 12).map(w => `<li>${_uiEsc(w)}</li>`).join('');
+
+  openModal(statusTitle, `
+    <div style="background:${statusBg}; border:1px solid ${statusBorder}; color:${statusColor}; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; font-weight:700;">
+      ${result.ok ? 'Nenhum erro crítico encontrado.' : 'Nenhuma OP foi salva. Corrija os itens abaixo e importe novamente.'}
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-bottom:16px;">
+      ${_importMetric('Linhas lidas', result.sourceRows || 0)}
+      ${_importMetric('OPs', (result.orders || []).length)}
+      ${_importMetric('Peças', result.totalPieces || 0)}
+      ${_importMetric('Agrupadas', result.mergedRows || 0)}
+    </div>
+    <div style="font-size:12px; color:var(--text-400); margin-bottom:12px;">Origem: ${_uiEsc(result.sourceName || '-')} · Leitura: ${_uiEsc(result.headerMode || '-')}</div>
+    ${warnings ? `<div style="margin-bottom:16px;"><div class="form-label">Avisos</div><ul style="margin:6px 0 0 18px; color:var(--text-500); font-size:12px;">${warnings}</ul></div>` : ''}
+    ${errors ? `
+      <div class="form-label">Erros encontrados</div>
+      <div class="tbl-wrap" style="max-height:260px; overflow:auto; margin-top:8px;">
+        <table class="tbl">
+          <thead><tr><th>Linha</th><th>OP</th><th>Motivo</th></tr></thead>
+          <tbody>${errors}</tbody>
+        </table>
+      </div>
+      ${(result.errors || []).length > 20 ? `<div style="font-size:12px; color:var(--text-400); margin-top:8px;">Mostrando 20 de ${result.errors.length} erros.</div>` : ''}
+    ` : ''}
+  `, `
+    <button class="btn btn-dark" onclick="closeModal()">OK</button>
+  `);
+}
+
+function _importMetric(label, value) {
+  return `
+    <div style="border:1px solid var(--border); border-radius:8px; padding:10px; background:#fff;">
+      <div style="font-size:10px; color:var(--text-400); font-weight:800; text-transform:uppercase;">${label}</div>
+      <div style="font-size:20px; font-weight:800; color:var(--text-900);">${value}</div>
+    </div>
+  `;
 }

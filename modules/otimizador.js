@@ -23,7 +23,7 @@ function renderOtimizador() {
             <label class="form-label">Lote Selecionado</label>
             <select class="form-control" id="otimLote">
               <option value="">— Escolha um lote —</option>
-              ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s)</option>`).join('')}
+              ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s) · ${_lotePieceCount(l)} peça(s)</option>`).join('')}
             </select>
             <div class="form-hint" style="margin-top:8px;">Motor <b>FFD Avançado</b>: agrupa por SKU, usa dimensão de corte real de cada OP, prioriza retalhos (≤ 20% desperdício), empacota múltiplas peças por barra para minimizar matéria-prima. Sobra mínima: <b>conf. por SKU</b>.</div>
           </div>
@@ -67,6 +67,14 @@ function renderOtimizador() {
       </section>
     </div>
   `;
+}
+
+function _lotePieceCount(lote) {
+  const ids = [...new Set((lote?.ordens || []).map(id => String(id)))];
+  return ids.reduce((sum, id) => {
+    const ordem = appState.ordens.find(o => o.id === id);
+    return sum + (Number(ordem?.qty) || 0);
+  }, 0);
 }
 
 /* ============================================================
@@ -157,6 +165,34 @@ function _startOtimizacao() {
             </div>
           `;
         }
+      } else if (String(e.message || '').startsWith('SKU_NAO_CADASTRADO')) {
+        const details = String(e.message || '').split(':').slice(1).join(':') || 'SKU não cadastrado';
+        const safeDetails = _otimEsc(details);
+        showToast('Existem OPs com SKU não cadastrado. Otimização bloqueada.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <p>Cadastre ou corrija o SKU antes de otimizar: ${safeDetails}.</p>
+            </div>
+          `;
+        }
+      } else if (String(e.message || '').startsWith('SKU_SEM_BARRA')) {
+        const details = String(e.message || '').split(':').slice(1).join(':') || 'sem barra compatível';
+        const safeDetails = _otimEsc(details);
+        showToast('Sem barra compatível para uma ou mais peças. Otimização bloqueada.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <p>Não existe barra virgem em estoque com medida suficiente para a peça restante: ${safeDetails}.</p>
+            </div>
+          `;
+        }
       } else if (String(e.message || '').startsWith('PLAN_PIECE_MISMATCH')) {
         showToast('O otimizador detectou uma inconsistência no plano e bloqueou o resultado. Tente recalcular o lote.', 'error');
         if (area) {
@@ -226,17 +262,23 @@ function _calcOtimizacao() {
     throw new Error(`LOTE_OP_INVALIDA:${invalidOps.map(o => o.id).join(', ')}`);
   }
 
+  const missingSkuOps = ordens.filter(o => !_otimFindSku(o.sku));
+  if (missingSkuOps.length) {
+    throw new Error(`SKU_NAO_CADASTRADO:${missingSkuOps.map(o => `${o.id} (${o.sku || '-'})`).join(', ')}`);
+  }
+
   // 1. Montar TODAS as peças individuais a partir das OPs (cada unidade é uma peça separada)
   const allPieces = [];
   ordens.forEach(o => {
     const qty = Number(o.qty);
+    const skuObj = _otimFindSku(o.sku);
     for (let i = 0; i < qty; i++) {
       allPieces.push({
         pieceId: `${o.id}#${i + 1}`,
         pieceNo: i + 1,
         qty,
         op: o.id,
-        sku: o.sku,
+        sku: skuObj.code,
         dim: parseFloat(o.dim),
         entrega: o.entrega || ''
       });
@@ -283,6 +325,9 @@ function _calcOtimizacao() {
     const remaining = pieces.map((pc, idx) => ({ ...pc, _idx: idx })); // Peças pendentes
 
     const sObj = appState.skus.find(x => x.code === sku);
+    if (!sObj) {
+      throw new Error(`SKU_NAO_CADASTRADO:${sku}`);
+    }
     // Guardrail min_sobra: se < 10, provavelmente em metros
     if (sObj && sObj.min_sobra !== undefined && sObj.min_sobra > 0 && sObj.min_sobra < 10) {
       console.warn(`[OTIM] SKU ${sku} min_sobra=${sObj.min_sobra} parece estar em METROS. Convertendo para mm (*1000).`);
@@ -339,6 +384,9 @@ function _calcOtimizacao() {
 
       // Encontrar a melhor barra virgem para este grupo de peças
       const chosenDim = _chooseBestBar(sObj, largestPiece.dim, remaining, cfgTrim, skuMinSobra, cfgPen);
+      if (!chosenDim) {
+        throw new Error(`SKU_SEM_BARRA:${sku} / ${largestPiece.op} / ${fmtM(largestPiece.dim)}`);
+      }
       const effectiveLen = chosenDim - 50;
       const uLen = effectiveLen - cfgTrim;
 
@@ -346,20 +394,7 @@ function _calcOtimizacao() {
       const packed = _packPiecesIntoBin(remaining, uLen);
 
       if (packed.length === 0) {
-        // Fallback: peça que não cabe em nenhuma barra — forçar na maior disponível
-        const biggestBar = _getBiggestBar(sObj) || 6000;
-        const effBiggest = biggestBar - 50;
-        const pc = remaining.shift();
-        plans.push({
-          type: 'virgin',
-          srcId: `${sku}|${biggestBar}`,
-          len: effBiggest,
-          usable: effBiggest - cfgTrim,
-          sku,
-          pcs: [_toPlanPiece(pc)],
-          rem: (effBiggest - cfgTrim) - pc.dim
-        });
-        continue;
+        throw new Error(`SKU_SEM_BARRA:${sku} / ${largestPiece.op} / ${fmtM(largestPiece.dim)}`);
       }
 
       const packedIdxs = packed.map(p => p._idx);
@@ -406,6 +441,11 @@ function _logicalOpKey(value) {
     .replace(/^(OP[\s-]*)+/i, '')
     .trim()
     .replace(/[\s-]+/g, '');
+}
+
+function _otimFindSku(code) {
+  const raw = String(code || '').trim().toLowerCase();
+  return appState.skus.find(s => String(s.code || '').trim().toLowerCase() === raw) || null;
 }
 
 function _otimEsc(value) {
@@ -459,7 +499,7 @@ function _removePacked(remaining, packedIdxs) {
      simular o empacotamento em cada um, e escolher a que gera
      o menor desperdício total (ou melhor sobra reutilizável). */
 function _chooseBestBar(sObj, minDim, remaining, cfgTrim, skuMinSobra, cfgPen) {
-  if (!sObj || !sObj.dims || sObj.dims.length === 0) return 6000;
+  if (!sObj || !sObj.dims || sObj.dims.length === 0) return null;
 
   const validBars = sObj.dims
     .filter(d => d.qty > 0 && ((d.dim - 50) - cfgTrim) >= minDim)
@@ -467,9 +507,7 @@ function _chooseBestBar(sObj, minDim, remaining, cfgTrim, skuMinSobra, cfgPen) {
     .sort((a, b) => a - b); // Ascendente
 
   if (validBars.length === 0) {
-    // Nenhuma barra comporta a peça, pegar a maior disponível
-    const allBars = sObj.dims.filter(d => d.qty > 0).sort((a, b) => b.dim - a.dim);
-    return allBars.length > 0 ? allBars[0].dim : 6000;
+    return null;
   }
 
   let bestDim = validBars[0];
