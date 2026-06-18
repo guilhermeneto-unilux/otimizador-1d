@@ -87,7 +87,13 @@ function _ordensFilteredList(tab = (appState._ordensTab || 'pending'), q = (appS
     const matchCliente = (o.cliente || '').toLowerCase().includes(q);
     const matchEntrega = _fmtDate(o.entrega).toLowerCase().includes(q);
     const matchPedido = (o._meta?.pedido || '').toString().toLowerCase().includes(q);
-    return matchId || matchSku || matchCliente || matchEntrega || matchPedido;
+    const matchRetrabalho = [
+      o._meta?.rework?.originalOp,
+      o._meta?.rework?.originalPieceId,
+      o._meta?.rework?.planoId,
+      o._meta?.rework?.loteId
+    ].filter(Boolean).join(' ').toLowerCase().includes(q);
+    return matchId || matchSku || matchCliente || matchEntrega || matchPedido || matchRetrabalho;
   });
 }
 
@@ -106,27 +112,41 @@ function _updateOrdensSearch(value) {
 }
 
 function _ordensRows(list) {
-  if (!list.length) return `<tr><td colspan="8" class="tbl-empty">Nenhuma ordem</td></tr>`;
+  if (!list.length) return `<tr><td colspan="9" class="tbl-empty">Nenhuma ordem</td></tr>`;
   return list.map(o => {
     const c = skuColor(o.sku);
+    const isRework = _isRetrabalhoOrdem(o);
+    const rw = isRework ? o._meta.rework : null;
+    const opCell = isRework
+      ? `<div class="fw-700" style="font-size:13px;">${o.id}</div><div class="ordem-rework-origin">Retrabalho de ${_uiEsc(rw.originalOp || 'OP')} · Plano ${_uiEsc(rw.planoId || '-')}</div>`
+      : `<span class="fw-700" style="font-size:13px;">${o.id}</span>`;
+    const statusLabel = o.status === 'pending'
+      ? (isRework ? 'Pendente · Retrabalho' : 'Pendente')
+      : o.status === 'in_batch'
+        ? `Lote ${o.lote}`
+        : 'Concluído';
+    const actionHtml = o.status === 'pending'
+      ? `<div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
+          ${isRework ? `<button class="btn btn-white btn-sm" style="padding:4px 8px;" onclick="_editarRetrabalhoModal('${o.id}')">Editar</button>` : ''}
+          <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px 8px;" onclick="if(confirm('Tem certeza que deseja excluir esta Ordem de Produção?')) _deleteOrdem('${o.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+        </div>`
+      : o.status === 'in_batch'
+        ? `<button class="btn btn-white btn-sm" style="padding:4px 8px;" onclick="_reverterOrdem('${o.id}')" title="Voltar para Pendente">Reverter</button>`
+        : '';
     return `
     <tr>
       <td><input type="checkbox" class="ord-chk" data-id="${o.id}"></td>
-      <td class="fw-700" style="font-size:13px;">${o.id}</td>
+      <td>${opCell}</td>
       <td><span class="sku-tag" style="background:${c.bg};color:${c.text};">${o.sku}</span></td>
       <td class="fw-700">${fmtM(o.dim)}</td>
       <td>${o.qty} pç</td>
       <td style="color:var(--text-400);">${_fmtDate(o.entrega)}</td>
       <td style="color:var(--text-400);">${o.cliente || '—'}</td>
       <td><span class="status-badge ${o.status === 'pending' ? 'badge-pending' : o.status === 'in_batch' ? 'badge-batch' : 'badge-approved'}">
-        ${o.status === 'pending' ? 'Pendente' : o.status === 'in_batch' ? `Lote ${o.lote}` : 'Concluído'}
+        ${statusLabel}
       </span></td>
       <td style="text-align:right;">
-        ${o.status === 'pending' 
-          ? `<button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px 8px;" onclick="if(confirm('Tem certeza que deseja excluir esta Ordem de Produção?')) _deleteOrdem('${o.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>` 
-          : o.status === 'in_batch' 
-          ? `<button class="btn btn-white btn-sm" style="padding:4px 8px;" onclick="_reverterOrdem('${o.id}')" title="Voltar para Pendente">Reverter</button>` 
-          : ''}
+        ${actionHtml}
       </td>
     </tr>`;
   }).join('');
@@ -138,8 +158,86 @@ function _fmtDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
+function _isRetrabalhoOrdem(o) {
+  return !!(o && o._meta && o._meta.rework);
+}
+
 function _setOrdensTab(tab) { appState._ordensTab = tab; renderOrdens(); }
 function _toggleAll(el) { document.querySelectorAll('.ord-chk').forEach(c => c.checked = el.checked); }
+
+function _editarRetrabalhoModal(id) {
+  const o = appState.ordens.find(x => x.id === id);
+  if (!o || !_isRetrabalhoOrdem(o) || o.status !== 'pending') {
+    showToast('Somente OPs pendentes de retrabalho podem ser editadas.', 'error');
+    return;
+  }
+
+  const rw = o._meta.rework || {};
+  const skuOpts = appState.skus.map(s => `<option value="${s.code}">${s.code} – ${s.desc}</option>`).join('');
+  const dimM = Number(o.dim || 0) ? (Number(o.dim) / 1000).toFixed(3) : '';
+
+  openModal(`Editar Retrabalho: ${id}`, `
+    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:12px; margin-bottom:16px; color:#9a3412; font-size:13px;">
+      Origem: <b>${_uiEsc(rw.originalOp || '-')}</b> · Plano <b>${_uiEsc(rw.planoId || '-')}</b> · Lote <b>${_uiEsc(rw.loteId || '-')}</b>
+    </div>
+    <div class="form-group">
+      <label class="form-label">SKU / Material</label>
+      <input class="form-control" type="text" id="rwSku" list="rwSkuDatalist" value="${_uiEscAttr(o.sku)}" autocomplete="off">
+      <datalist id="rwSkuDatalist">${skuOpts}</datalist>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Dimensão de Corte (m)</label>
+      <input class="form-control" type="number" step="0.001" id="rwDim" value="${_uiEscAttr(dimM)}">
+    </div>
+  `, `
+    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-dark" onclick="_salvarEdicaoRetrabalho('${id}')">Salvar Alterações</button>
+  `);
+}
+
+async function _salvarEdicaoRetrabalho(id) {
+  const o = appState.ordens.find(x => x.id === id);
+  if (!o || !_isRetrabalhoOrdem(o) || o.status !== 'pending') {
+    showToast('Retrabalho não encontrado para edição.', 'error');
+    return;
+  }
+
+  const sku = document.getElementById('rwSku').value.trim();
+  const dim = Math.round(parseFloat(String(document.getElementById('rwDim').value || '').replace(',', '.')) * 1000);
+
+  if (!sku) { showToast('Selecione um SKU/Material!', 'error'); return; }
+  if (!dim || dim <= 0) { showToast('Informe uma dimensão válida.', 'error'); return; }
+  if (!appState.skus.some(s => s.code === sku)) { showToast('SKU não encontrado no catálogo!', 'error'); return; }
+
+  const previous = { sku: o.sku, dim: o.dim };
+  const previousRework = { ...(o._meta.rework || {}) };
+  o.sku = sku;
+  o.dim = dim;
+  o._meta.rework.editedAt = new Date().toISOString();
+  o._meta.rework.editedBy = {
+    id: appState.currentUser?.id || '',
+    name: appState.currentUser?.name || '',
+    email: appState.currentUser?.email || ''
+  };
+  o._meta.rework.previous = previous;
+
+  try {
+    await DB.saveOrdem(o);
+    await DB.log("Editou Retrabalho", "unilux_ordens", `${id}: ${previous.sku}/${fmtM(previous.dim)} -> ${sku}/${fmtM(dim)}`);
+  } catch (err) {
+    o.sku = previous.sku;
+    o.dim = previous.dim;
+    o._meta.rework = previousRework;
+    console.error('Erro ao editar retrabalho:', err);
+    showToast('Erro ao salvar alteração do retrabalho.', 'error');
+    return;
+  }
+
+  closeModal();
+  showToast(`Retrabalho ${id} atualizado!`, 'success');
+  renderOrdens();
+  updateBadges();
+}
 
 function _novaOrdemModal() {
   const skuOpts = appState.skus.map(s => `<option value="${s.code}">${s.code} – ${s.desc}</option>`).join('');

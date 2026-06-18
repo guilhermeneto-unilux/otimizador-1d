@@ -3,6 +3,8 @@
 function renderPlanos() {
   const lotesPend = appState.lotes.filter(l => l.status === 'pending');
   const planos = appState.planos || [];
+  const q = (appState.filters.planos || '').trim();
+  const filteredCount = q ? planos.filter(p => _planoMatchesSearch(p, q)).length : planos.length;
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header" style="margin-bottom:24px;">
@@ -19,11 +21,12 @@ function renderPlanos() {
       <div>
         <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
           <h2 style="font-size:16px; font-weight:700; color:var(--text-900); margin:0;">Planos Finalizados</h2>
-          <div class="search-input-group" style="max-width:300px; width:100%;">
+          <div class="search-input-group" style="max-width:360px; width:100%;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" class="form-control" placeholder="Buscar por plano, lote ou SKU..." onkeyup="_filtrarPlanos(this.value)">
+            <input type="text" class="form-control" id="planosSearchInput" placeholder="Buscar por plano, lote, SKU ou OP..." value="${_planosEsc(q)}" oninput="_filtrarPlanos(this.value)">
           </div>
         </div>
+        <div class="search-results-stats" id="planosSearchStats" style="${q ? 'margin-bottom:10px;' : 'display:none; margin-bottom:10px;'}">${filteredCount} resultados</div>
         <div class="tbl-wrap">
           <table class="tbl" id="tblPlanosFin">
             <thead>
@@ -39,7 +42,7 @@ function renderPlanos() {
               </tr>
             </thead>
             <tbody>
-              ${planos.length ? _planosFinalizadosRows(planos) : '<tr><td colspan="8" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
+              ${planos.length ? _planosFinalizadosRows(planos, q) : '<tr><td colspan="8" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -70,12 +73,14 @@ function renderPlanos() {
   `;
 }
 
-function _planosFinalizadosRows(planos) {
-  return planos.sort((a,b) => new Date(b.data) - new Date(a.data)).map(p => {
+function _planosFinalizadosRows(planos, q = '') {
+  return planos.slice().sort((a,b) => new Date(b.data) - new Date(a.data)).map(p => {
     const barras = p.mapa ? p.mapa.length : 0;
     const approval = _planoApprovalInfo(p);
+    const searchText = _planoSearchHaystack(p);
+    const visible = _planoMatchesSearch(p, q);
     return `
-    <tr>
+    <tr data-search="${_planosEsc(searchText)}" style="${visible ? '' : 'display:none;'}">
       <td class="fw-700">${p.id}</td>
       <td style="color:var(--text-400);">${p.loteId}</td>
       <td><span class="status-badge badge-approved">${p.aproveitamento}</span></td>
@@ -122,6 +127,56 @@ function _planosEsc(value) {
     '"': '&quot;',
     "'": '&#39;'
   }[ch]));
+}
+
+function _planoSearchHaystack(plano) {
+  const raw = _planoSearchText(plano).toLowerCase();
+  const compact = raw.replace(/[\s-]/g, '');
+  return `${raw} ${compact}`;
+}
+
+function _planoSearchText(plano) {
+  const bits = [
+    plano.id,
+    plano.loteId,
+    plano.aproveitamento,
+    plano.data,
+    _planoApprovalInfo(plano).name,
+    _planoApprovalInfo(plano).email
+  ];
+
+  (plano.mapa || []).forEach((bin, binIdx) => {
+    bits.push(bin.sku, bin.srcId, bin.srcAddr, `barra-${binIdx + 1}`);
+    (bin.pcs || []).forEach(pc => {
+      bits.push(pc.op, pc.pieceId, _opDigits(pc.op || pc.pieceId), pc.sku, pc.dim, pc.entrega);
+    });
+  });
+
+  return bits.filter(v => v !== undefined && v !== null && v !== '').join(' ');
+}
+
+function _planoMatchesSearch(plano, q) {
+  const needle = String(q || '').trim().toLowerCase();
+  if (!needle) return true;
+  const compact = needle.replace(/[\s-]/g, '');
+  const haystack = _planoSearchHaystack(plano);
+  return haystack.includes(needle) || (compact && haystack.includes(compact));
+}
+
+function _planosPieceMatchesSearch(pc, q) {
+  const needle = String(q || '').trim().toLowerCase();
+  if (!needle) return false;
+  const compact = needle.replace(/[\s-]/g, '');
+  const text = [
+    pc.op,
+    pc.pieceId,
+    _opDigits(pc.op || pc.pieceId),
+    pc.sku,
+    pc.dim,
+    pc.entrega
+  ].filter(Boolean).join(' ').toLowerCase();
+  const haystack = `${text} ${text.replace(/[\s-]/g, '')}`;
+  return haystack.includes(needle) || (compact && haystack.includes(compact));
 }
 
 function _lotesPendentesRows(lotes) {
@@ -346,6 +401,7 @@ function _exportPlanoExcel(planoId) {
 function _verPlanoMapa(planoId) {
   const plano = appState.planos.find(p => p.id === planoId);
   if (!plano) return;
+  const activeSearch = appState.filters.planos || '';
 
   // Separar barras virgens de retalhos
   const virginPlans = plano.mapa.filter(p => p.type === 'virgin');
@@ -394,9 +450,9 @@ function _verPlanoMapa(planoId) {
       <div id="modalMapaContent" class="plano-map-list">
         ${(() => {
           const c = {};
-          return plano.mapa.map(bin => {
+          return plano.mapa.map((bin, binIdx) => {
             if (c[bin.sku] === undefined) c[bin.sku] = 0;
-            return _renderBarResult(bin, c[bin.sku]++);
+            return _renderBarResult(bin, c[bin.sku]++, plano.id, binIdx, activeSearch);
           }).join('');
         })()}
       </div>
@@ -407,13 +463,25 @@ function _verPlanoMapa(planoId) {
 }
 
 function _filtrarPlanos(val) {
-  const q = val.toLowerCase();
+  appState.filters.planos = val || '';
+  const q = (val || '').toLowerCase();
+  let count = 0;
   document.querySelectorAll('#tblPlanosFin tbody tr').forEach(tr => {
-    tr.style.display = (tr.textContent.toLowerCase().includes(q) ? '' : 'none');
+    const compact = q.replace(/[\s-]/g, '');
+    const search = tr.dataset.search || tr.textContent.toLowerCase();
+    const visible = !q || search.includes(q) || (compact && search.includes(compact));
+    tr.style.display = visible ? '' : 'none';
+    if (visible) count++;
   });
+
+  const stats = document.getElementById('planosSearchStats');
+  if (stats) {
+    stats.textContent = `${count} resultados`;
+    stats.style.display = q ? '' : 'none';
+  }
 }
 
-function _renderBarResult(bin, idx) {
+function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '') {
   const totalPcs = bin.pcs.reduce((sum, p) => sum + p.dim, 0);
   const aprov = ((totalPcs/bin.len)*100).toFixed(1);
 
@@ -431,14 +499,15 @@ function _renderBarResult(bin, idx) {
         <span class="status-badge badge-approved">${aprov}% usado</span>
       </div>
       <div class="plano-map-track">
-        ${bin.pcs.map(pc => {
+        ${bin.pcs.map((pc, pcIdx) => {
           const w = (pc.dim / bin.len) * 100;
           const label = _pieceLabel(pc);
+          const pieceClass = _planosPieceMatchesSearch(pc, activeSearch) ? 'plano-map-piece plano-map-piece--highlight' : 'plano-map-piece';
           return `
-            <div class="plano-map-piece" style="width:${w}%;" title="${label}: ${fmtM(pc.dim)}">
+            <button class="${pieceClass}" style="width:${w}%;" title="${label}: ${fmtM(pc.dim)}" onclick="_confirmarRetrabalhoOP('${planoId}', ${binIdx}, ${pcIdx})">
               <span class="plano-map-piece-label">${label}</span>
               <span class="plano-map-piece-dim">${fmtM(pc.dim)}</span>
-            </div>
+            </button>
           `;
         }).join('')}
         ${bin.rem > 0 ? `<div class="plano-map-waste" title="${restanteLabel}: ${fmtM(bin.rem)}">${restanteLabel}: ${fmtM(bin.rem)}</div>` : ''}
@@ -449,6 +518,120 @@ function _renderBarResult(bin, idx) {
       </div>
     </div>
   `;
+}
+
+function _getPlanoPieceContext(planoId, binIdx, pcIdx) {
+  const plano = appState.planos.find(p => p.id === planoId);
+  const bin = plano && plano.mapa ? plano.mapa[binIdx] : null;
+  const pc = bin && bin.pcs ? bin.pcs[pcIdx] : null;
+  if (!plano || !bin || !pc) return null;
+  return { plano, bin, pc };
+}
+
+function _confirmarRetrabalhoOP(planoId, binIdx, pcIdx) {
+  const ctx = _getPlanoPieceContext(planoId, binIdx, pcIdx);
+  if (!ctx) {
+    showToast('Não foi possível localizar esta OP no plano.', 'error');
+    return;
+  }
+
+  const existing = _findExistingRetrabalho(ctx.plano.id, ctx.pc, binIdx, pcIdx);
+  if (existing) {
+    showToast(`Retrabalho já criado: ${existing.id}`, 'info');
+    appState._ordensTab = 'pending';
+    appState.filters.ordens = existing.id;
+    closeModal();
+    navigate('ordens');
+    return;
+  }
+
+  const label = _pieceLabel(ctx.pc);
+  const msg = `Deseja retrabalhar ${label}?\n\nPlano: ${ctx.plano.id}\nLote: ${ctx.plano.loteId}\nSKU: ${ctx.pc.sku || ctx.bin.sku}\nMedida: ${fmtM(ctx.pc.dim)}`;
+  if (!confirm(msg)) return;
+
+  _criarOrdemRetrabalho(ctx.plano, ctx.bin, ctx.pc, binIdx, pcIdx);
+}
+
+async function _criarOrdemRetrabalho(plano, bin, pc, binIdx, pcIdx) {
+  const original = appState.ordens.find(o => o.id === pc.op);
+  const id = _nextRetrabalhoId(pc.op || pc.pieceId || 'OP');
+  const now = new Date().toISOString();
+  const currentUser = appState.currentUser || {};
+  const baseMeta = original && original._meta ? { ...original._meta } : {};
+
+  const ordem = {
+    id,
+    sku: pc.sku || bin.sku,
+    dim: Math.round(Number(pc.dim) || 0),
+    qty: 1,
+    cliente: original?.cliente || 'Retrabalho',
+    entrega: pc.entrega || original?.entrega || new Date().toISOString().split('T')[0],
+    status: 'pending',
+    lote: null,
+    _meta: {
+      ...baseMeta,
+      rework: {
+        isRework: true,
+        originalOp: pc.op || '',
+        originalPieceId: pc.pieceId || '',
+        originalPieceNo: pc.pieceNo || pcIdx + 1,
+        originalQty: pc.qty || '',
+        planoId: plano.id,
+        loteId: plano.loteId,
+        binIndex: binIdx,
+        pieceIndex: pcIdx,
+        sourceSku: pc.sku || bin.sku,
+        sourceDim: Math.round(Number(pc.dim) || 0),
+        createdAt: now,
+        createdBy: {
+          id: currentUser.id || '',
+          name: currentUser.name || '',
+          email: currentUser.email || ''
+        }
+      }
+    }
+  };
+
+  appState.ordens.push(ordem);
+  try {
+    await DB.saveOrdem(ordem);
+    await DB.log("Criou Retrabalho", "unilux_ordens", `${id} a partir de ${pc.op || pc.pieceId} no plano ${plano.id}`);
+  } catch (err) {
+    appState.ordens = appState.ordens.filter(o => o.id !== id);
+    console.error('Erro ao criar retrabalho:', err);
+    showToast('Erro ao criar retrabalho. Tente novamente.', 'error');
+    return;
+  }
+
+  closeModal();
+  showToast(`Retrabalho ${id} enviado para Pendentes.`, 'success');
+  appState._ordensTab = 'pending';
+  appState.filters.ordens = id;
+  navigate('ordens');
+}
+
+function _findExistingRetrabalho(planoId, pc, binIdx, pcIdx) {
+  return appState.ordens.find(o => {
+    const rw = o._meta && o._meta.rework;
+    if (o.status === 'done') return false;
+    if (!rw || rw.planoId !== planoId) return false;
+    if (pc.pieceId && rw.originalPieceId === pc.pieceId) return true;
+    return rw.originalOp === pc.op && Number(rw.binIndex) === Number(binIdx) && Number(rw.pieceIndex) === Number(pcIdx);
+  });
+}
+
+function _nextRetrabalhoId(originalOp) {
+  const normalized = typeof _normalizeOpId === 'function'
+    ? (_normalizeOpId(originalOp) || 'OP-RETRABALHO')
+    : String(originalOp || 'OP-RETRABALHO').toUpperCase();
+  const safeBase = normalized.replace(/[^A-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/-$/g, '') || 'OP-RETRABALHO';
+  let idx = 1;
+  let id = `${safeBase}-RT${idx}`;
+  while (appState.ordens.some(o => o.id === id)) {
+    idx++;
+    id = `${safeBase}-RT${idx}`;
+  }
+  return id;
 }
 
 function _planoSkuMinSobra(sku) {
