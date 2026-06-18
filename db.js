@@ -23,7 +23,7 @@ const DEFAULT_COMPRAS_CONFIG = {
 const appState = {
   currentRoute: 'dashboard',
   ordens: [], lotes: [], planos: [], barras: [], sobras: [], historico: [], skus: [],
-  users: [], audit: [],
+  users: [], audit: [], sobraHistory: [],
   nextLoteId: 1, nextSobraId: 1, nextPlanoId: 1,
   configs: { trim_m: 0, scrap_penalty_pct: 0 },
   comprasConfig: JSON.parse(JSON.stringify(DEFAULT_COMPRAS_CONFIG)),
@@ -43,7 +43,7 @@ const DB = {
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
-        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, cfgPlanosReq, cfgComprasReq] = await Promise.all([
+        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, cfgPlanosReq, cfgComprasReq, cfgSobraHistoryReq] = await Promise.all([
           supabaseClient.from('unilux_skus').select('*'),
           supabaseClient.from('unilux_sobras').select('*'),
           supabaseClient.from('unilux_ordens').select('*'),
@@ -52,7 +52,8 @@ const DB = {
           supabaseClient.from('unilux_configs').select('data').eq('id', 1).single(),
           supabaseClient.from('unilux_users').select(UNILUX_PROFILE_COLUMNS).order('name'),
           supabaseClient.from('unilux_configs').select('data').eq('id', 2).single(),
-          supabaseClient.from('unilux_configs').select('data').eq('id', 3).single()
+          supabaseClient.from('unilux_configs').select('data').eq('id', 3).single(),
+          supabaseClient.from('unilux_configs').select('data').eq('id', 4).single()
         ]);
 
         if (skusReq.error) {
@@ -105,6 +106,7 @@ const DB = {
           return p;
         });
         appState.comprasConfig = this._normalizeComprasConfig(cfgComprasReq.data?.data);
+        appState.sobraHistory = this._normalizeSobraHistory(cfgSobraHistoryReq.data?.data);
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
         
         // Ensure counters exist in configs
@@ -143,6 +145,7 @@ const DB = {
     appState.skus = [];
     appState.users = [];
     appState.audit = [];
+    appState.sobraHistory = [];
     appState.configs = { trim_m: 0, scrap_penalty_pct: 0 };
     appState.comprasConfig = JSON.parse(JSON.stringify(DEFAULT_COMPRAS_CONFIG));
   },
@@ -165,6 +168,7 @@ const DB = {
     console.warn('Usando dados em memória (Fallback).');
     Object.assign(appState, initialData);
     appState.comprasConfig = this._normalizeComprasConfig(this._loadComprasConfigLocal());
+    if (!Array.isArray(appState.sobraHistory)) appState.sobraHistory = [];
     this._updateStatusUI('Offline Fallback');
   },
 
@@ -183,6 +187,13 @@ const DB = {
     } catch(e) {
       return null;
     }
+  },
+
+  _normalizeSobraHistory(raw) {
+    const events = Array.isArray(raw) ? raw : (Array.isArray(raw?.events) ? raw.events : []);
+    return events
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.timestamp || b.data || 0) - new Date(a.timestamp || a.data || 0));
   },
 
   _updateStatusUI(statusTxt) {
@@ -310,6 +321,16 @@ const DB = {
     const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 3, data: appState.comprasConfig });
     if (error) {
       console.error('Erro ao salvar configs de compras:', error);
+      throw error;
+    }
+  },
+
+  async saveSobraHistoryAll() {
+    if (!supabaseClient) return;
+    appState.sobraHistory = this._normalizeSobraHistory({ events: appState.sobraHistory }).slice(0, 500);
+    const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 4, data: { events: appState.sobraHistory } });
+    if (error) {
+      console.error('Erro ao salvar histórico de sobras:', error);
       throw error;
     }
   },

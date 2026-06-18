@@ -708,10 +708,13 @@ async function _finalizarOtimizacao() {
   });
 
   // Consumir sobras usadas
-  usedScraps.forEach(sid => {
+  const sobrasConsumidas = usedScraps
+    .map(sid => appState.sobras.find(s => s.id === sid))
+    .filter(Boolean);
+  for (const sid of usedScraps) {
     appState.sobras = appState.sobras.filter(s => s.id !== sid);
-    DB.deleteSobra(sid);
-  });
+    await DB.deleteSobra(sid);
+  }
 
   // Baixar barras virgens usadas agrupadas pelo SKU (Multi-Length Support)
   let barrasUsadas = 0;
@@ -789,6 +792,19 @@ async function _finalizarOtimizacao() {
   
   // Save all plans to unilux_configs row id=2 (no separate table needed)
   await DB.savePlanosAll();
+  if (typeof _registrarHistoricoSobra === 'function') {
+    try {
+      for (const sobra of sobrasConsumidas) {
+        await _registrarHistoricoSobra('utilizada', sobra, {
+          loteId,
+          planoId: planoFinal.id,
+          reason: 'Otimização aprovada'
+        });
+      }
+    } catch (err) {
+      console.warn('Plano salvo, mas o histórico de sobras não pôde ser atualizado:', err);
+    }
+  }
   await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name}`);
   
   showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');

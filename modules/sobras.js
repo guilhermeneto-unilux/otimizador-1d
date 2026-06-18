@@ -41,10 +41,37 @@ function _openWmsGrid(id) {
   renderSobras();
 }
 
+function _setSobrasTab(tab) {
+  appState._sobrasTab = tab;
+  if (tab !== 'map') currentWmsQuad = null;
+  renderSobras();
+}
+
+function _renderSobrasTabs(active = 'map') {
+  return `
+    <div class="tabs" style="margin-bottom:24px;">
+      <span class="tab ${active === 'map' ? 'active' : ''}" onclick="_setSobrasTab('map')">Mapa WMS</span>
+      <span class="tab ${active === 'list' ? 'active' : ''}" onclick="_setSobrasTab('list')">Lista (${appState.sobras.length})</span>
+      <span class="tab ${active === 'history' ? 'active' : ''}" onclick="_setSobrasTab('history')">Histórico (${(appState.sobraHistory || []).length})</span>
+    </div>
+  `;
+}
+
 function renderSobras() {
   const content = document.getElementById('contentArea');
   const q       = (appState.filters.sobras || '').toLowerCase();
-  
+  const tab     = appState._sobrasTab || 'map';
+
+  if (tab === 'list') {
+    content.innerHTML = _renderSobrasListView(q);
+    return;
+  }
+
+  if (tab === 'history') {
+    content.innerHTML = _renderSobrasHistoryView(q);
+    return;
+  }
+
   if (q) {
     // VISÃO DE PESQUISA: Lista todas as sobras que batem com o critério
     const filtered = _sobrasFilteredList(q);
@@ -57,12 +84,14 @@ function renderSobras() {
         </div>
       </div>
 
+      ${_renderSobrasTabs('map')}
+
       <div class="search-bar-card" style="margin-bottom:24px;">
         <div class="search-input-group">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" class="form-control" 
+          <input type="text" class="form-control"
                  id="sobrasSearchInput"
-                 placeholder="Digite SKU ou Descrição para localizar o retalho..." 
+                 placeholder="Digite SKU ou Descrição para localizar o retalho..."
                  value="${_uiEscAttr(appState.filters.sobras || '')}"
                  oninput="_updateSobrasSearch(this.value)" autofocus>
         </div>
@@ -96,7 +125,7 @@ function renderSobras() {
       const capacity = _getCapacity(q);
       const occupied = appState.sobras.filter(s => s.endereco && s.endereco.startsWith(q.id + '-')).length;
       const pct = capacity > 0 ? Math.round((occupied / capacity) * 100) : 0;
-      
+
       return `
         <div class="wms-card" style="background:${q.bg}; color:${q.text}; ${q.border ? `border:1px solid ${q.border}` : ''}" onclick="_openWmsGrid('${q.id}')">
           <div class="wms-card-name">${q.name}</div>
@@ -117,9 +146,9 @@ function renderSobras() {
         <div class="pg-actions">
           <div class="search-input-group" style="width:200px; margin-right:8px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" class="form-control" style="height:34px; font-size:12px;" 
+            <input type="text" class="form-control" style="height:34px; font-size:12px;"
                    id="sobrasSearchInput"
-                   placeholder="Localizar Retalho..." 
+                   placeholder="Localizar Retalho..."
                    value="${_uiEscAttr(appState.filters.sobras || '')}"
                    oninput="_updateSobrasSearch(this.value)">
           </div>
@@ -134,32 +163,34 @@ function renderSobras() {
         </div>
       </div>
 
+      ${_renderSobrasTabs('map')}
+
       <div class="wms-dashboard">
         ${cards}
       </div>
-      
+
       <!-- Listagem das Sobras Desalocadas (sem endereco formal) -->
       ${_renderUnallocated()}
     `;
   } else {
     // RENDERIZA A MATRIZ BATALHA NAVAL
     const q = WMS_QUADS.find(x => x.id === currentWmsQuad);
-    
+
     const maxCols = q.cols;
     let gridHtml = `<div class="wms-matrix" style="grid-template-columns: 40px repeat(${maxCols}, 1fr);">`;
-    
+
     // Cabeçalho (Colunas)
     gridHtml += `<div class="wms-cell header"></div>`;
     for(let c=1; c<=maxCols; c++) {
       gridHtml += `<div class="wms-cell header">${c}</div>`;
     }
-    
+
     // Linhas
     for(let r=0; r<q.rows; r++) {
       const rowChar = WMS_ROWS[r];
       const rowCols = _getColsForRow(q, r);
       gridHtml += `<div class="wms-cell header">${rowChar}</div>`;
-      
+
       for(let c=1; c<=maxCols; c++) {
         if (c > rowCols) {
           // Posição inexistente nesta fileira
@@ -168,11 +199,11 @@ function renderSobras() {
         }
         const colStr = String(c).padStart(2, '0');
         const ender = `${q.id}-${rowChar}${colStr}`;
-        
+
         // Verifica se tem sobra ali
         const s = appState.sobras.find(x => x.endereco === ender);
         const cellLabel = `${rowChar}${colStr}`;
-        
+
         if (s) {
           const cBg = skuColor(s.sku).bg;
           const cText = skuColor(s.sku).text;
@@ -202,7 +233,9 @@ function renderSobras() {
           <h1 class="pg-title">Quadrante ${q.name}</h1>
         </div>
       </div>
-      
+
+      ${_renderSobrasTabs('map')}
+
       <div class="table-card" style="padding:24px; overflow-x:auto;">
         ${gridHtml}
       </div>
@@ -211,12 +244,266 @@ function renderSobras() {
 }
 
 function _sobrasFilteredList(q = (appState.filters.sobras || '').toLowerCase()) {
+  const needle = String(q || '').toLowerCase();
   return appState.sobras.filter(s => {
     const skuObj = appState.skus.find(sk => sk.code === s.sku);
     const desc = skuObj ? skuObj.desc.toLowerCase() : '';
     const sDesc = skuObj ? (skuObj.short_desc || '').toLowerCase() : '';
-    return s.sku.toLowerCase().includes(q) || desc.includes(q) || sDesc.includes(q);
+    const text = [
+      s.id,
+      s.sku,
+      s.endereco,
+      s.origem,
+      s.criacao,
+      s.medida,
+      desc,
+      sDesc
+    ].filter(Boolean).join(' ').toLowerCase();
+    return !needle || text.includes(needle);
   });
+}
+
+function _renderSobrasListView(q = '') {
+  const filtered = _sobrasFilteredList(q);
+  return `
+    <div class="pg-header">
+      <div>
+        <div class="pg-eyebrow">Warehouse Management (WMS)</div>
+        <h1 class="pg-title">Retalhos & Sobras</h1>
+      </div>
+      <div class="pg-actions">
+        <div class="search-input-group" style="width:260px; margin-right:8px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" class="form-control" style="height:34px; font-size:12px;"
+                 id="sobrasSearchInput"
+                 placeholder="Buscar ID, SKU, local ou origem..."
+                 value="${_uiEscAttr(appState.filters.sobras || '')}"
+                 oninput="_updateSobrasSearch(this.value)">
+        </div>
+        <button class="btn btn-green" onclick="_openManualSobraModal()">Novo Retalho Manual</button>
+      </div>
+    </div>
+
+    ${_renderSobrasTabs('list')}
+
+    <div class="table-card">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>SKU</th>
+            <th>Descrição</th>
+            <th>Localização</th>
+            <th>Quadrante</th>
+            <th>Tamanho</th>
+            <th>Entrada</th>
+            <th>Origem</th>
+            <th style="text-align:right;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_sobrasListRows(filtered)}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _sobrasListRows(list) {
+  if (!list.length) {
+    return '<tr><td colspan="9" style="text-align:center; padding:48px; color:var(--text-400);">Nenhuma sobra encontrada.</td></tr>';
+  }
+
+  return list
+    .slice()
+    .sort((a, b) => String(a.endereco || '').localeCompare(String(b.endereco || '')) || String(a.sku || '').localeCompare(String(b.sku || '')))
+    .map(s => {
+      const skuObj = appState.skus.find(sk => sk.code === s.sku);
+      const color = skuColor(s.sku);
+      const quad = s.endereco ? String(s.endereco).split('-')[0] : '';
+      return `
+        <tr>
+          <td class="fw-700">${_uiEsc(s.id)}</td>
+          <td><span class="status-badge" style="background:${color.bg}; color:${color.text}; border:1px solid ${color.text}33;">${_uiEsc(s.sku)}</span></td>
+          <td style="font-size:13px; font-weight:500;">${_uiEsc(skuObj ? skuObj.desc : '-')}</td>
+          <td>${s.endereco ? `<span style="font-weight:700; color:var(--text-600);">${_uiEsc(s.endereco)}</span>` : '<span style="color:var(--text-400); font-style:italic;">Sem endereço</span>'}</td>
+          <td>${quad ? `<span class="status-badge" style="background:#f3f4f6; color:var(--text-700); border:1px solid var(--border);">${_uiEsc(quad)}</span>` : '-'}</td>
+          <td style="font-weight:800; color:var(--orange);">${fmtM(s.medida)}</td>
+          <td style="color:var(--text-500);">${_fmtSobraDate(s.criacao)}</td>
+          <td style="color:var(--text-500);">${_uiEsc(s.origem || '-')}</td>
+          <td style="text-align:right;">
+            <button class="btn btn-white btn-sm" onclick="_verSobraNoMapa('${_uiEscAttr(s.endereco || '')}')">Ver Local</button>
+            <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${_uiEscAttr(s.id)}')">Excluir</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+}
+
+function _renderSobrasHistoryView(q = '') {
+  const filtered = _sobrasHistoryFilteredList(q);
+  return `
+    <div class="pg-header">
+      <div>
+        <div class="pg-eyebrow">Rastreabilidade de retalhos</div>
+        <h1 class="pg-title">Histórico de Utilização</h1>
+      </div>
+      <div class="pg-actions">
+        <div class="search-input-group" style="width:280px; margin-right:8px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" class="form-control" style="height:34px; font-size:12px;"
+                 id="sobrasSearchInput"
+                 placeholder="Buscar por SKU, local, plano ou motivo..."
+                 value="${_uiEscAttr(appState.filters.sobras || '')}"
+                 oninput="_updateSobrasSearch(this.value)">
+        </div>
+      </div>
+    </div>
+
+    ${_renderSobrasTabs('history')}
+
+    <div class="table-card">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Ação</th>
+            <th>Sobra</th>
+            <th>SKU</th>
+            <th>Localização</th>
+            <th>Tamanho</th>
+            <th>Origem</th>
+            <th>Motivo / Plano</th>
+            <th>Usuário</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_sobrasHistoryRows(filtered)}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _sobrasHistoryFilteredList(q = '') {
+  const needle = String(q || '').toLowerCase();
+  return (appState.sobraHistory || [])
+    .filter(ev => {
+      if (!needle) return true;
+      const s = ev.sobra || {};
+      const text = [
+        ev.action,
+        ev.reason,
+        ev.obs,
+        ev.loteId,
+        ev.planoId,
+        s.id,
+        s.sku,
+        s.endereco,
+        s.origem,
+        s.medida,
+        ev.user?.name,
+        ev.user?.email
+      ].filter(Boolean).join(' ').toLowerCase();
+      return text.includes(needle);
+    })
+    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+}
+
+function _sobrasHistoryRows(list) {
+  if (!list.length) {
+    return '<tr><td colspan="9" style="text-align:center; padding:48px; color:var(--text-400);">Nenhum evento de utilização ou remoção registrado ainda.</td></tr>';
+  }
+
+  return list.map(ev => {
+    const s = ev.sobra || {};
+    const color = skuColor(s.sku || '');
+    const action = ev.action === 'utilizada'
+      ? { label: 'Utilizada', bg: '#dcfce7', color: '#16a34a' }
+      : { label: 'Removida', bg: '#fee2e2', color: '#dc2626' };
+    const reason = ev.action === 'utilizada'
+      ? `${ev.planoId ? `Plano ${_uiEsc(ev.planoId)}` : 'Plano de corte'}${ev.loteId ? ` · Lote ${_uiEsc(ev.loteId)}` : ''}`
+      : `${_uiEsc(ev.reason || 'Remoção manual')}${ev.obs ? `<div style="font-size:11px; color:var(--text-400); margin-top:2px;">${_uiEsc(ev.obs)}</div>` : ''}`;
+    return `
+      <tr>
+        <td style="color:var(--text-500);">${_fmtSobraDateTime(ev.timestamp)}</td>
+        <td><span class="status-badge" style="background:${action.bg}; color:${action.color}; border:1px solid ${action.color}33;">${action.label}</span></td>
+        <td class="fw-700">${_uiEsc(s.id || '-')}</td>
+        <td><span class="status-badge" style="background:${color.bg}; color:${color.text}; border:1px solid ${color.text}33;">${_uiEsc(s.sku || '-')}</span></td>
+        <td>${s.endereco ? `<span style="font-weight:700; color:var(--text-600);">${_uiEsc(s.endereco)}</span>` : '<span style="color:var(--text-400);">Sem endereço</span>'}</td>
+        <td style="font-weight:800; color:var(--orange);">${fmtM(s.medida)}</td>
+        <td style="color:var(--text-500);">${_uiEsc(s.origem || '-')}</td>
+        <td style="font-size:13px;">${reason}</td>
+        <td style="color:var(--text-500);">${_uiEsc(ev.user?.name || 'Sistema')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function _fmtSobraDate(value) {
+  if (!value) return '-';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+    const [y, m, d] = String(value).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return String(value);
+}
+
+function _fmtSobraDateTime(value) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return _fmtSobraDate(value);
+  return d.toLocaleString('pt-BR');
+}
+
+function _verSobraNoMapa(endereco) {
+  if (!endereco) {
+    showToast('Esta sobra ainda não tem localização definida.', 'info');
+    return;
+  }
+  appState._sobrasTab = 'map';
+  appState.filters.sobras = '';
+  currentWmsQuad = String(endereco).split('-')[0] || null;
+  renderSobras();
+  setTimeout(() => _clickWmsSlot(endereco, true), 80);
+}
+
+function _sobraHistorySnapshot(s) {
+  return {
+    id: s.id || '',
+    sku: s.sku || '',
+    medida: Number(s.medida) || 0,
+    endereco: s.endereco || '',
+    origem: s.origem || '',
+    criacao: s.criacao || ''
+  };
+}
+
+async function _registrarHistoricoSobra(action, sobra, extra = {}) {
+  if (!sobra) return null;
+  if (!Array.isArray(appState.sobraHistory)) appState.sobraHistory = [];
+
+  const user = appState.currentUser || {};
+  const event = {
+    id: `SH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: new Date().toISOString(),
+    action,
+    sobra: _sobraHistorySnapshot(sobra),
+    reason: extra.reason || extra.motivo || '',
+    obs: extra.obs || '',
+    loteId: extra.loteId || '',
+    planoId: extra.planoId || '',
+    user: {
+      id: user.id || '',
+      name: user.name || '',
+      email: user.email || ''
+    }
+  };
+
+  appState.sobraHistory.unshift(event);
+  appState.sobraHistory = appState.sobraHistory.slice(0, 500);
+  await DB.saveSobraHistoryAll();
+  return event;
 }
 
 function _sobrasSearchRows(filtered) {
@@ -325,8 +612,8 @@ function _clickWmsSlot(endereco, isOccupied) {
         <div class="form-group">
              <label class="form-label">SKU (Pesquise por código ou nome)</label>
              <div style="position:relative;">
-               <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" 
-                      oninput="_filterSkuDropdown(this.value)" 
+               <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off"
+                      oninput="_filterSkuDropdown(this.value)"
                       onfocus="_showSkuDropdown(this)"
                       onkeydown="_handleSkuKeydown(event, this)">
                <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:220px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); text-align:left;">
@@ -364,7 +651,7 @@ async function _salvarSobra(btnEl) {
   const elSkuInput = document.getElementById('soSkuInput');
   const elMed = document.getElementById('soMed');
   const elEnd = document.getElementById('soEndTarget');
-  
+
   if (!elSkuInput || !elMed || !elEnd) {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
     return;
@@ -372,15 +659,15 @@ async function _salvarSobra(btnEl) {
 
   const skuVal = elSkuInput.value.trim();
   const skuPart = skuVal.includes(' - ') ? skuVal.split(' - ')[0].trim() : skuVal;
-  
+
   // Converte Metros (input) para Milímetros (DB)
   const med = Math.round(parseFloat(elMed.value.replace(',', '.')) * 1000);
   const endereco = elEnd.value;
-  
-  if (!skuVal || !med || !endereco) { 
-    showToast('Informe SKU, Medida e Endereço!', 'error'); 
+
+  if (!skuVal || !med || !endereco) {
+    showToast('Informe SKU, Medida e Endereço!', 'error');
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
-    return; 
+    return;
   }
 
   // Busca o SKU oficial no appState.skus por código exato ou por match de "CODE - DESC"
@@ -401,21 +688,21 @@ async function _salvarSobra(btnEl) {
     return;
   }
 
-  const novaSobra = { 
-    id: `SC-${String(appState.nextSobraId++).padStart(3,'0')}`, 
-    sku, 
-    medida: med, 
-    criacao: new Date().toISOString().split('T')[0], 
+  const novaSobra = {
+    id: `SC-${String(appState.nextSobraId++).padStart(3,'0')}`,
+    sku,
+    medida: med,
+    criacao: new Date().toISOString().split('T')[0],
     origem: 'Manual',
-    endereco 
+    endereco
   };
-  
+
   try {
     appState.sobras.push(novaSobra);
-    
+
     // Atualiza o contador no configs para persistência
     appState.configs.nextSobraId = appState.nextSobraId;
-    
+
     // Salva a sobra e as configurações (novo contador)
     await Promise.all([
       DB.saveSobra(novaSobra),
@@ -423,8 +710,8 @@ async function _salvarSobra(btnEl) {
     ]);
 
     DB.log("Cadastrou Sobra Manual", "unilux_sobras", `${novaSobra.sku} em ${endereco}`);
-    
-    closeModal(); 
+
+    closeModal();
     showToast(`Sobra física alocada em ${endereco}`, 'success');
   } catch (err) {
     console.error('Erro ao salvar sobra:', err);
@@ -434,7 +721,7 @@ async function _salvarSobra(btnEl) {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
     return;
   }
-  
+
   renderSobras(); updateBadges();
 }
 
@@ -499,6 +786,11 @@ async function _confirmarExcluirSobra(id, btnEl) {
   try {
     await DB.deleteSobra(id);
     appState.sobras = appState.sobras.filter(item => item.id !== id);
+    try {
+      await _registrarHistoricoSobra('removida', s, { reason, obs });
+    } catch (histErr) {
+      console.warn('Sobra excluída, mas o histórico não pôde ser atualizado:', histErr);
+    }
     const details = `${s.sku} de ${s.endereco || 'sem endereço'} · ${fmtM(s.medida)} · Motivo: ${reason}${obs ? ` · Obs: ${obs}` : ''}`;
     await DB.log("Excluiu Sobra", "unilux_sobras", details);
     showToast('Sobra excluída.', 'info');
@@ -528,13 +820,13 @@ function _openManualSobraModal() {
       <div style="text-align:center; padding:16px;">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px; color:var(--green);"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
         <h3 style="margin-bottom:8px;">Aponte o leitor para o QR Code da prateleira</h3>
-        
-        <input type="text" id="scanQuadInput" 
-               style="width: 100%; text-align: center; font-size: 20px; font-weight: 800; padding: 16px; border: 2px dashed var(--text-400); border-radius: 8px; margin-bottom: 24px; text-transform: uppercase;" 
+
+        <input type="text" id="scanQuadInput"
+               style="width: 100%; text-align: center; font-size: 20px; font-weight: 800; padding: 16px; border: 2px dashed var(--text-400); border-radius: 8px; margin-bottom: 24px; text-transform: uppercase;"
                placeholder="BIPAR CÓDIGO AQUI" autocomplete="off">
-               
+
         <p style="font-size:12px; color:var(--text-400); margin-bottom:16px; font-weight:700; text-transform:uppercase;">Ou selecione manualmente abaixo se estiver sem leitor:</p>
-        
+
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
           ${btns}
         </div>
@@ -567,7 +859,7 @@ function _findNextWmsSlotByQuad(quadId) {
   const q = WMS_QUADS.find(x => x.id === quadId);
   if(!q) return null;
   const L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-  
+
   for(let r=0; r<q.rows; r++) {
     const rowCols = _getColsForRow(q, r);
     for(let c=1; c<=rowCols; c++) {
@@ -582,7 +874,7 @@ function _findNextWmsSlotByQuad(quadId) {
 function _avancarCadastroSobra(quadId) {
   const nextSlot = _findNextWmsSlotByQuad(quadId);
   const q = WMS_QUADS.find(x => x.id === quadId);
-  
+
   if (!nextSlot) {
     showToast(`O quadrante ${q.name} está completamento cheio!`, 'error');
     return;
@@ -602,8 +894,8 @@ function _avancarCadastroSobra(quadId) {
          <div class="form-group">
            <label class="form-label" style="font-weight:700;">Perfil da Sobra (Pesquise)</label>
            <div style="position:relative; text-align:left;">
-             <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" style="font-size:16px; padding:12px;" 
-                    oninput="_filterSkuDropdown(this.value)" 
+             <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" style="font-size:16px; padding:12px;"
+                    oninput="_filterSkuDropdown(this.value)"
                     onfocus="_showSkuDropdown(this)"
                     onkeydown="_handleSkuKeydown(event, this)">
              <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:250px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
@@ -623,7 +915,7 @@ function _avancarCadastroSobra(quadId) {
       <button class="btn btn-green" onclick="_salvarSobra(this)">✓ Salvar Posição</button>
     `
   );
-  
+
   // Auto-focus no campo de pesquisa de SKU
   setTimeout(() => document.getElementById('soSkuInput').focus(), 150);
 }
@@ -671,9 +963,9 @@ function _imprimirQrCodes() {
         body { font-family: 'Inter', sans-serif; padding: 40px; background: #f9fafb; }
         h1 { text-align: center; margin-bottom: 40px; font-size: 24px; color: #111827; }
         .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; max-width: 900px; margin: 0 auto; }
-        @media print { 
-          body { padding: 0; background: #fff; } 
-          .grid { gap: 16px; max-width: 100%; } 
+        @media print {
+          body { padding: 0; background: #fff; }
+          .grid { gap: 16px; max-width: 100%; }
           .qr-print-card { break-inside: avoid; border: 2px solid #000 !important; }
         }
       </style>
@@ -691,7 +983,7 @@ function _filterSkuDropdown(val) {
   const q = _normalizeStr(val);
   const opts = document.querySelectorAll('#soSkuDropdown .sku-option');
   let found = false;
-  
+
   opts.forEach(opt => {
     const txt = _normalizeStr(opt.textContent);
     if(txt.includes(q)) {
