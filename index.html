@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://yqnntrsdbqwtlfgmcmqq.supabase.co wss://yqnntrsdbqwtlfgmcmqq.supabase.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://yqnntrsdbqwtlfgmcmqq.supabase.co wss://yqnntrsdbqwtlfgmcmqq.supabase.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
   <title>UNILUX – Otimizador de Corte 1D</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -128,10 +128,10 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- SUPABASE (BaaS) -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="vendor/supabase-js-2.108.2.min.js?v=2.108.2"></script>
 
 <!-- SHEETJS (Excel parser) -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="vendor/xlsx-0.20.3.full.min.js?v=0.20.3"></script>
 
 <script src="db.js?v=3.26"></script>
 <script src="modules/dashboard.js?v=3.20"></script>
