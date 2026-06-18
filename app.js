@@ -98,16 +98,16 @@ function _restoreInputFocus(focus) {
 
 function _pieceLabel(pc) {
   if (!pc) return '';
-  const op = pc.op || '';
+  const op = pc.baseOp || pc.op || '';
   return pc.qty > 1 && pc.pieceNo ? `${op} (${pc.pieceNo}/${pc.qty})` : op;
 }
 
 function _pieceExportId(pc) {
-  return _opDigits(pc?.op || pc?.pieceId || '');
+  return _opDigits(pc?.baseOp || pc?.op || pc?.pieceId || '');
 }
 
 function _opDigits(value) {
-  return String(value ?? '').split('#')[0].replace(/^OP[\s-]*/i, '').replace(/\D/g, '');
+  return String(value ?? '').split('#')[0].replace(/-L\d+$/i, '').replace(/^OP[\s-]*/i, '').replace(/\D/g, '');
 }
 
 // ─── ROUTER ─────────────────────────────────────────────────────

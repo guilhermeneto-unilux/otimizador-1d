@@ -393,7 +393,7 @@ function _comprasHistoryStats(sku) {
     (bin.pcs || []).forEach(pc => {
       const dim = _comprasNumber(pc.dim, 0);
       if (dim > 0) {
-        pieceDims.push({ sku, dim, op: pc.op || '', entrega: pc.entrega || '' });
+        pieceDims.push({ sku, dim, op: pc.baseOp || pc.op || '', entrega: pc.entrega || '' });
         usedLen += dim;
       }
     });

@@ -23,7 +23,7 @@ function renderOtimizador() {
             <label class="form-label">Lote Selecionado</label>
             <select class="form-control" id="otimLote">
               <option value="">— Escolha um lote —</option>
-              ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} OP(s) · ${_lotePieceCount(l)} peça(s)</option>`).join('')}
+              ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} linha(s) · ${_lotePieceCount(l)} peça(s)</option>`).join('')}
             </select>
             <div class="form-hint" style="margin-top:8px;">Motor <b>FFD Avançado</b>: agrupa por SKU, usa dimensão de corte real de cada OP, prioriza retalhos (≤ 20% desperdício), empacota múltiplas peças por barra para minimizar matéria-prima. Sobra mínima: <b>conf. por SKU</b>.</div>
           </div>
@@ -137,20 +137,6 @@ function _startOtimizacao() {
             </div>
           `;
         }
-      } else if (String(e.message || '').startsWith('LOTE_OP_DUPLICADA')) {
-        const details = String(e.message || '').split(':').slice(1).join(':') || 'OP duplicada no lote';
-        const safeDetails = _otimEsc(details);
-        showToast('O lote tem OP duplicada. Revise as ordens antes de otimizar.', 'error');
-        if (area) {
-          area.innerHTML = `
-            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
-              </svg>
-              <p>O lote contém a mesma OP cadastrada mais de uma vez (${safeDetails}). Volte para Ordens de Produção, deixe apenas a OP correta e recrie o lote.</p>
-            </div>
-          `;
-        }
       } else if (String(e.message || '').startsWith('LOTE_OP_INVALIDA')) {
         const details = String(e.message || '').split(':').slice(1).join(':') || 'OP inválida';
         const safeDetails = _otimEsc(details);
@@ -248,11 +234,6 @@ function _calcOtimizacao() {
     throw new Error('LOTE_CORROMPEU');
   }
 
-  const duplicatedOps = _findDuplicateLogicalOps(ordens);
-  if (duplicatedOps.length) {
-    throw new Error(`LOTE_OP_DUPLICADA:${duplicatedOps.map(g => g.ids.join(' + ')).join(' | ')}`);
-  }
-
   const invalidOps = ordens.filter(o => {
     const qty = Number(o.qty);
     const dim = Number(o.dim);
@@ -272,12 +253,15 @@ function _calcOtimizacao() {
   ordens.forEach(o => {
     const qty = Number(o.qty);
     const skuObj = _otimFindSku(o.sku);
+    const baseOp = _otimBaseOp(o);
     for (let i = 0; i < qty; i++) {
       allPieces.push({
         pieceId: `${o.id}#${i + 1}`,
         pieceNo: i + 1,
         qty,
         op: o.id,
+        baseOp,
+        lineId: o.id,
         sku: skuObj.code,
         dim: parseFloat(o.dim),
         entrega: o.entrega || ''
@@ -420,32 +404,21 @@ function _calcOtimizacao() {
   _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen);
 }
 
-function _findDuplicateLogicalOps(ordens) {
-  const groups = new Map();
-  ordens.forEach(o => {
-    const key = _logicalOpKey(o.id);
-    if (!key) return;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(o.id);
-  });
-  return [...groups.values()]
-    .filter(ids => ids.length > 1)
-    .map(ids => ({ ids }));
+function _otimFindSku(code) {
+  const raw = String(code || '').trim().toLowerCase();
+  return appState.skus.find(s => String(s.code || '').trim().toLowerCase() === raw) || null;
 }
 
-function _logicalOpKey(value) {
-  return String(value ?? '')
+function _otimBaseOp(ordem) {
+  const raw = ordem?._meta?.base_op || ordem?._meta?.op_original || ordem?.id || '';
+  const normalized = String(raw)
     .split('#')[0]
     .trim()
     .toUpperCase()
     .replace(/^(OP[\s-]*)+/i, '')
-    .trim()
-    .replace(/[\s-]+/g, '');
-}
-
-function _otimFindSku(code) {
-  const raw = String(code || '').trim().toLowerCase();
-  return appState.skus.find(s => String(s.code || '').trim().toLowerCase() === raw) || null;
+    .replace(/-L\d+$/i, '')
+    .trim();
+  return normalized ? `OP-${normalized}` : String(ordem?.id || '');
 }
 
 function _otimEsc(value) {
@@ -464,6 +437,8 @@ function _toPlanPiece(pc) {
     pieceNo: pc.pieceNo,
     qty: pc.qty,
     op: pc.op,
+    baseOp: pc.baseOp,
+    lineId: pc.lineId,
     sku: pc.sku,
     dim: pc.dim,
     entrega: pc.entrega

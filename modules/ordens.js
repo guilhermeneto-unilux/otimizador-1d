@@ -14,7 +14,7 @@ function renderOrdens() {
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
       <div>
-        <div class="pg-eyebrow">${pending.length} OP(s) pendente(s) / ${pendingPieces} peça(s) · ${inBatch.length} OP(s) em lote / ${inBatchPieces} peça(s)</div>
+        <div class="pg-eyebrow">${pending.length} linha(s) pendente(s) / ${pendingPieces} peça(s) · ${inBatch.length} linha(s) em lote / ${inBatchPieces} peça(s)</div>
         <h1 class="pg-title">Ordens de Produção</h1>
       </div>
       <div class="pg-actions">
@@ -38,8 +38,8 @@ function renderOrdens() {
     </div>
 
     <div class="tabs" style="margin-bottom:0; border-bottom:0; border-radius:8px 8px 0 0;">
-      <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length} OPs / ${pendingPieces} pç)</span>
-      <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length} OPs / ${inBatchPieces} pç)</span>
+      <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length} linhas / ${pendingPieces} pç)</span>
+      <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length} linhas / ${inBatchPieces} pç)</span>
       ${tab === 'batch' && inBatch.length > 0 
         ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--red); border:1px solid #fee2e2; font-weight:700;" onclick="_reverterTodasOrdens()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -89,17 +89,23 @@ function _ordensFilteredList(tab = (appState._ordensTab || 'pending'), q = (appS
   return activeList.filter(o => {
     if (!q) return true;
     const matchId = o.id.toLowerCase().includes(q);
+    const matchBaseOp = _ordemBaseOp(o).toLowerCase().includes(q);
     const matchSku = o.sku.toLowerCase().includes(q);
     const matchCliente = (o.cliente || '').toLowerCase().includes(q);
     const matchEntrega = _fmtDate(o.entrega).toLowerCase().includes(q);
-    const matchPedido = (o._meta?.pedido || '').toString().toLowerCase().includes(q);
+    const matchPedido = [
+      o._meta?.pedido,
+      o._meta?.op_original,
+      o._meta?.base_op,
+      o._meta?.line_id
+    ].filter(Boolean).join(' ').toLowerCase().includes(q);
     const matchRetrabalho = [
       o._meta?.rework?.originalOp,
       o._meta?.rework?.originalPieceId,
       o._meta?.rework?.planoId,
       o._meta?.rework?.loteId
     ].filter(Boolean).join(' ').toLowerCase().includes(q);
-    return matchId || matchSku || matchCliente || matchEntrega || matchPedido || matchRetrabalho;
+    return matchId || matchBaseOp || matchSku || matchCliente || matchEntrega || matchPedido || matchRetrabalho;
   });
 }
 
@@ -123,9 +129,13 @@ function _ordensRows(list) {
     const c = skuColor(o.sku);
     const isRework = _isRetrabalhoOrdem(o);
     const rw = isRework ? o._meta.rework : null;
+    const baseOp = _ordemBaseOp(o);
+    const lineHint = baseOp && baseOp !== o.id
+      ? `<div class="ordem-rework-origin">Linha interna ${_uiEsc(o.id)}</div>`
+      : '';
     const opCell = isRework
       ? `<div class="fw-700" style="font-size:13px;">${o.id}</div><div class="ordem-rework-origin">Retrabalho de ${_uiEsc(rw.originalOp || 'OP')} · Plano ${_uiEsc(rw.planoId || '-')}</div>`
-      : `<span class="fw-700" style="font-size:13px;">${o.id}</span>`;
+      : `<div class="fw-700" style="font-size:13px;">${_uiEsc(baseOp || o.id)}</div>${lineHint}`;
     const statusLabel = o.status === 'pending'
       ? (isRework ? 'Pendente · Retrabalho' : 'Pendente')
       : o.status === 'in_batch'
@@ -170,6 +180,17 @@ function _normalizeOpId(rawId) {
   const withoutPrefix = value.replace(/^(OP[\s-]*)+/i, '').trim().replace(/\s+/g, '-');
   if (!withoutPrefix) return '';
   return `OP-${withoutPrefix}`;
+}
+
+function _ordemBaseOp(o) {
+  if (!o) return '';
+  const metaBase = o._meta?.base_op || o._meta?.op_original;
+  if (metaBase) return _normalizeOpId(metaBase);
+  return _stripOrderLineSuffix(_normalizeOpId(o.id));
+}
+
+function _stripOrderLineSuffix(id) {
+  return String(id || '').replace(/-L\d+$/i, '');
 }
 
 function _isRetrabalhoOrdem(o) {
@@ -307,13 +328,36 @@ async function _salvarOrdem() {
   if (!skuExists) { showToast('SKU não encontrado no catálogo!', 'error'); return; }
   
   // Formatar o ID: adicionar prefixo OP- se o usuário não colocou
-  const id = _normalizeOpId(rawId);
-  if (!id) { showToast('Preencha um número de OP válido!', 'error'); return; }
-  
-  // Verificar duplicata
-  if (appState.ordens.some(o => o.id === id)) { showToast(`Ordem ${id} já existe!`, 'error'); return; }
-  
-  const novaOrdem = { id, sku, dim, qty, cliente, entrega, status: 'pending', lote: null };
+  const baseOp = _normalizeOpId(rawId);
+  if (!baseOp) { showToast('Preencha um número de OP válido!', 'error'); return; }
+
+  const pendingSameLine = appState.ordens.find(o =>
+    o.status === 'pending' &&
+    _ordemBaseOp(o) === baseOp &&
+    _orderLineSignature(o.sku, o.dim) === _orderLineSignature(sku, dim)
+  );
+  if (pendingSameLine) {
+    showToast(`A linha ${baseOp} / ${sku} / ${fmtM(dim)} já está pendente.`, 'error');
+    return;
+  }
+
+  const usedIds = new Set(appState.ordens.map(o => o.id));
+  const id = _allocateOrderLineId(baseOp, sku, dim, usedIds);
+  const novaOrdem = {
+    id,
+    sku,
+    dim,
+    qty,
+    cliente,
+    entrega,
+    status: 'pending',
+    lote: null,
+    _meta: {
+      base_op: baseOp,
+      op_original: rawId,
+      line_id: id
+    }
+  };
   try {
     await DB.saveOrdem(novaOrdem);
     appState.ordens.push(novaOrdem);
@@ -388,22 +432,7 @@ function _validateOrdensParaLote(ids) {
     if (!_skuExists(o.sku)) errors.push({ op: o.id, reason: `SKU não cadastrado: ${o.sku || '-'}` });
   });
 
-  const byLogicalOp = new Map();
-  ordens.forEach(o => {
-    const key = _opLogicalKey(o.id);
-    if (!key) return;
-    if (!byLogicalOp.has(key)) byLogicalOp.set(key, []);
-    byLogicalOp.get(key).push(o.id);
-  });
-  [...byLogicalOp.values()].filter(list => list.length > 1).forEach(list => {
-    errors.push({ op: list.join(' + '), reason: 'mesma OP lógica selecionada mais de uma vez' });
-  });
-
   return { ok: errors.length === 0, errors, ordens };
-}
-
-function _opLogicalKey(value) {
-  return String(_normalizeOpId(value)).replace(/^OP-/, '').replace(/[\s-]+/g, '');
 }
 
 function _showLoteValidationReport(validation) {
@@ -680,13 +709,13 @@ function _prepareOrdensImport(rows, opts = {}) {
     const rawQty = _cell(row, columns.qty);
     const rawSku = _cell(row, columns.sku);
     const rawDim = _cell(row, columns.dim);
-    const id = _normalizeOpId(rawOp);
+    const baseOp = _normalizeOpId(rawOp);
     const qty = _parseImportQty(rawQty);
     const dim = _parseImportDim(rawDim);
     const sku = _canonicalSku(rawSku);
     const rowErrors = [];
 
-    if (!id) rowErrors.push('OP vazia');
+    if (!baseOp) rowErrors.push('OP vazia');
     if (!Number.isInteger(qty) || qty <= 0) rowErrors.push('quantidade inválida');
     if (!Number.isFinite(dim) || dim <= 0) rowErrors.push('medida de corte inválida');
     if (!String(rawSku ?? '').trim()) {
@@ -696,14 +725,14 @@ function _prepareOrdensImport(rows, opts = {}) {
     }
 
     if (rowErrors.length) {
-      errors.push({ line: lineNo, op: id || String(rawOp || '-'), reason: rowErrors.join(', ') });
+      errors.push({ line: lineNo, op: baseOp || String(rawOp || '-'), reason: rowErrors.join(', ') });
       continue;
     }
 
     sourceRows++;
     const entrega = _parseImportDate(_cell(row, columns.entrega));
     const rowOrder = {
-      id,
+      id: baseOp,
       sku,
       dim,
       qty,
@@ -714,6 +743,8 @@ function _prepareOrdensImport(rows, opts = {}) {
       _meta: {
         mrp: String(_cell(row, columns.mrp) || ''),
         op_original: String(rawOp || ''),
+        base_op: baseOp,
+        line_id: baseOp,
         pedido: String(_cell(row, columns.pedido) || ''),
         etiqueta: String(_cell(row, columns.etiqueta) || ''),
         subclasse: String(_cell(row, columns.subclasse) || ''),
@@ -723,39 +754,21 @@ function _prepareOrdensImport(rows, opts = {}) {
       }
     };
 
-    const existingGroup = grouped.get(id);
+    const groupKey = `${baseOp}|${_orderLineSignature(sku, dim)}`;
+    const existingGroup = grouped.get(groupKey);
     if (existingGroup) {
-      if (existingGroup.sku !== rowOrder.sku || existingGroup.dim !== rowOrder.dim) {
-        errors.push({
-          line: lineNo,
-          op: id,
-          reason: `OP repetida com SKU/medida diferente. Primeira: ${existingGroup.sku}/${fmtM(existingGroup.dim)}; linha ${lineNo}: ${rowOrder.sku}/${fmtM(rowOrder.dim)}`
-        });
-        continue;
-      }
       existingGroup.qty += rowOrder.qty;
       existingGroup._meta.import_rows.push(lineNo);
       if (rowOrder._meta.etiqueta) {
         existingGroup._meta.etiqueta = [existingGroup._meta.etiqueta, rowOrder._meta.etiqueta].filter(Boolean).join(', ');
       }
-      warnings.push(`OP ${id} aparece mais de uma vez; quantidade somada para ${existingGroup.qty} pç.`);
+      warnings.push(`${baseOp} aparece mais de uma vez com o mesmo SKU/medida; quantidade somada para ${existingGroup.qty} pç.`);
     } else {
-      grouped.set(id, rowOrder);
+      grouped.set(groupKey, rowOrder);
     }
   }
 
-  const orders = [...grouped.values()];
-  orders.forEach(order => {
-    const existing = appState.ordens.find(o => o.id === order.id);
-    if (!existing) return;
-    if (existing.status !== 'pending') {
-      errors.push({ line: '-', op: order.id, reason: `já existe no sistema com status "${existing.status}" no lote ${existing.lote || '-'}` });
-      return;
-    }
-    if (existing.sku !== order.sku || Number(existing.dim) !== Number(order.dim)) {
-      warnings.push(`OP ${order.id} pendente será atualizada de ${existing.sku}/${fmtM(existing.dim)} para ${order.sku}/${fmtM(order.dim)}.`);
-    }
-  });
+  const orders = _assignImportOrderIds([...grouped.values()], warnings);
 
   if (!sourceRows && !errors.length) {
     errors.push({ line: '-', op: '-', reason: 'nenhuma linha válida encontrada para importar' });
@@ -774,6 +787,74 @@ function _prepareOrdensImport(rows, opts = {}) {
     headerMode: headerInfo.headerRow >= 0 ? `cabeçalho linha ${headerInfo.headerRow + 1}` : 'layout legado',
     sourceName
   };
+}
+
+function _assignImportOrderIds(orders, warnings) {
+  const usedIds = new Set((appState.ordens || []).map(o => o.id));
+  const claimedPendingIds = new Set();
+  const byBase = new Map();
+
+  orders.forEach(order => {
+    const baseOp = order._meta?.base_op || _ordemBaseOp(order);
+    if (!byBase.has(baseOp)) byBase.set(baseOp, []);
+    byBase.get(baseOp).push(order);
+  });
+
+  byBase.forEach((baseOrders, baseOp) => {
+    if (baseOrders.length > 1) {
+      warnings.push(`${baseOp} possui ${baseOrders.length} perfis/medidas diferentes; serão criadas linhas internas separadas.`);
+    }
+
+    baseOrders
+      .sort((a, b) => (a._meta.import_rows?.[0] || 0) - (b._meta.import_rows?.[0] || 0))
+      .forEach(order => {
+        const signature = _orderLineSignature(order.sku, order.dim);
+        const matchingPending = (appState.ordens || []).find(existing =>
+          existing.status === 'pending' &&
+          !claimedPendingIds.has(existing.id) &&
+          _ordemBaseOp(existing) === baseOp &&
+          _orderLineSignature(existing.sku, existing.dim) === signature
+        );
+
+        if (matchingPending) {
+          order.id = matchingPending.id;
+          claimedPendingIds.add(matchingPending.id);
+          warnings.push(`Linha pendente ${matchingPending.id} de ${baseOp} será atualizada.`);
+        } else {
+          order.id = _allocateOrderLineId(baseOp, order.sku, order.dim, usedIds);
+          if (order.id !== baseOp) {
+            const existingBase = (appState.ordens || []).find(existing => _ordemBaseOp(existing) === baseOp);
+            if (existingBase) {
+              warnings.push(`${baseOp} já existe no histórico/sistema; nova linha criada como ${order.id}.`);
+            }
+          }
+        }
+
+        order._meta.base_op = baseOp;
+        order._meta.line_id = order.id;
+        usedIds.add(order.id);
+      });
+  });
+
+  return orders;
+}
+
+function _orderLineSignature(sku, dim) {
+  return `${String(_canonicalSku(sku)).trim().toLowerCase()}|${Number(dim) || 0}`;
+}
+
+function _allocateOrderLineId(baseOp, sku, dim, usedIds) {
+  const used = usedIds || new Set((appState.ordens || []).map(o => o.id));
+  const base = _normalizeOpId(baseOp);
+  if (base && !used.has(base)) return base;
+
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base}-L${String(i).padStart(2, '0')}`;
+    if (!used.has(candidate)) return candidate;
+  }
+
+  const fallback = `${base}-L${Date.now()}`;
+  return used.has(fallback) ? `${fallback}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` : fallback;
 }
 
 function _detectImportColumns(rows) {
@@ -879,8 +960,8 @@ async function _commitOrdensImport(result, opts = {}) {
     }
 
     DB.saveConfig(appState.configs);
-    await DB.log(opts.logAction || 'Importou OPs', 'unilux_ordens', `${result.orders.length} OPs, ${result.totalPieces} peça(s), ${result.sourceRows} linha(s), ${result.mergedRows} linha(s) agrupada(s)`);
-    showToast(`${opts.successMessage || 'Importação concluída!'} ${result.orders.length} OPs / ${result.totalPieces} peça(s).`, 'success');
+    await DB.log(opts.logAction || 'Importou OPs', 'unilux_ordens', `${result.orders.length} linha(s) de OP, ${result.totalPieces} peça(s), ${result.sourceRows} linha(s), ${result.mergedRows} linha(s) agrupada(s)`);
+    showToast(`${opts.successMessage || 'Importação concluída!'} ${result.orders.length} linha(s) / ${result.totalPieces} peça(s).`, 'success');
     if (result.warnings.length || result.mergedRows) _showImportReport({ ...result, ok: true });
   } catch (err) {
     console.error('Erro ao salvar importação:', err);
@@ -904,11 +985,11 @@ function _showImportReport(result) {
 
   openModal(statusTitle, `
     <div style="background:${statusBg}; border:1px solid ${statusBorder}; color:${statusColor}; border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; font-weight:700;">
-      ${result.ok ? 'Nenhum erro crítico encontrado.' : 'Nenhuma OP foi salva. Corrija os itens abaixo e importe novamente.'}
+      ${result.ok ? 'Nenhum erro crítico encontrado.' : 'Nenhuma linha de OP foi salva. Corrija os itens abaixo e importe novamente.'}
     </div>
     <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-bottom:16px;">
       ${_importMetric('Linhas lidas', result.sourceRows || 0)}
-      ${_importMetric('OPs', (result.orders || []).length)}
+      ${_importMetric('Linhas OP', (result.orders || []).length)}
       ${_importMetric('Peças', result.totalPieces || 0)}
       ${_importMetric('Agrupadas', result.mergedRows || 0)}
     </div>

@@ -148,7 +148,7 @@ function _planoSearchText(plano) {
   (plano.mapa || []).forEach((bin, binIdx) => {
     bits.push(bin.sku, bin.srcId, bin.srcAddr, `barra-${binIdx + 1}`);
     (bin.pcs || []).forEach(pc => {
-      bits.push(pc.op, pc.pieceId, _opDigits(pc.op || pc.pieceId), pc.sku, pc.dim, pc.entrega);
+      bits.push(pc.baseOp, pc.op, pc.lineId, pc.pieceId, _opDigits(pc.baseOp || pc.op || pc.pieceId), pc.sku, pc.dim, pc.entrega);
     });
   });
 
@@ -168,9 +168,11 @@ function _planosPieceMatchesSearch(pc, q) {
   if (!needle) return false;
   const compact = needle.replace(/[\s-]/g, '');
   const text = [
+    pc.baseOp,
     pc.op,
+    pc.lineId,
     pc.pieceId,
-    _opDigits(pc.op || pc.pieceId),
+    _opDigits(pc.baseOp || pc.op || pc.pieceId),
     pc.sku,
     pc.dim,
     pc.entrega
@@ -339,7 +341,7 @@ function _exportPlanoExcel(planoId) {
           '',                // T
           '',                // U
           _pieceExportId(pc), // V: PARTID com os dígitos da OP
-          _opDigits(pc.op || pc.pieceId), // W: número da OP (mantém cabeçalho PARTORDNUM)
+          _opDigits(pc.baseOp || pc.op || pc.pieceId), // W: número da OP (mantém cabeçalho PARTORDNUM)
           '',                // X
           '',                // Y
           entrega,           // Z: Data de entrega
@@ -554,7 +556,8 @@ function _confirmarRetrabalhoOP(planoId, binIdx, pcIdx) {
 
 async function _criarOrdemRetrabalho(plano, bin, pc, binIdx, pcIdx) {
   const original = appState.ordens.find(o => o.id === pc.op);
-  const id = _nextRetrabalhoId(pc.op || pc.pieceId || 'OP');
+  const originalBaseOp = pc.baseOp || pc.op || pc.pieceId || 'OP';
+  const id = _nextRetrabalhoId(originalBaseOp);
   const now = new Date().toISOString();
   const currentUser = appState.currentUser || {};
   const baseMeta = original && original._meta ? { ...original._meta } : {};
@@ -573,6 +576,7 @@ async function _criarOrdemRetrabalho(plano, bin, pc, binIdx, pcIdx) {
       rework: {
         isRework: true,
         originalOp: pc.op || '',
+        originalBaseOp,
         originalPieceId: pc.pieceId || '',
         originalPieceNo: pc.pieceNo || pcIdx + 1,
         originalQty: pc.qty || '',
@@ -595,7 +599,7 @@ async function _criarOrdemRetrabalho(plano, bin, pc, binIdx, pcIdx) {
   appState.ordens.push(ordem);
   try {
     await DB.saveOrdem(ordem);
-    await DB.log("Criou Retrabalho", "unilux_ordens", `${id} a partir de ${pc.op || pc.pieceId} no plano ${plano.id}`);
+    await DB.log("Criou Retrabalho", "unilux_ordens", `${id} a partir de ${originalBaseOp} no plano ${plano.id}`);
   } catch (err) {
     appState.ordens = appState.ordens.filter(o => o.id !== id);
     console.error('Erro ao criar retrabalho:', err);
