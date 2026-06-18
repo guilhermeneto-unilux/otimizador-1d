@@ -129,6 +129,34 @@ function _startOtimizacao() {
             </div>
           `;
         }
+      } else if (String(e.message || '').startsWith('LOTE_OP_DUPLICADA')) {
+        const details = String(e.message || '').split(':').slice(1).join(':') || 'OP duplicada no lote';
+        const safeDetails = _otimEsc(details);
+        showToast('O lote tem OP duplicada. Revise as ordens antes de otimizar.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <p>O lote contém a mesma OP cadastrada mais de uma vez (${safeDetails}). Volte para Ordens de Produção, deixe apenas a OP correta e recrie o lote.</p>
+            </div>
+          `;
+        }
+      } else if (String(e.message || '').startsWith('LOTE_OP_INVALIDA')) {
+        const details = String(e.message || '').split(':').slice(1).join(':') || 'OP inválida';
+        const safeDetails = _otimEsc(details);
+        showToast('O lote tem OP com quantidade ou medida inválida.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <p>Revise quantidade e medida das OPs antes de otimizar: ${safeDetails}.</p>
+            </div>
+          `;
+        }
       } else if (String(e.message || '').startsWith('PLAN_PIECE_MISMATCH')) {
         showToast('O otimizador detectou uma inconsistência no plano e bloqueou o resultado. Tente recalcular o lote.', 'error');
         if (area) {
@@ -170,21 +198,43 @@ function _calcOtimizacao() {
 
   if (!loteId) { showToast('Selecione um lote!', 'error'); return; }
 
-  const lote   = appState.lotes.find(l => l.id === loteId);
-  const ordens = appState.ordens.filter(o => lote.ordens.includes(o.id));
-
-  if (!ordens || ordens.length === 0) {
+  const lote = appState.lotes.find(l => l.id === loteId);
+  if (!lote || !Array.isArray(lote.ordens)) {
     throw new Error('LOTE_CORROMPEU');
+  }
+
+  const loteOrderIds = [...new Set(lote.ordens.map(id => String(id)))];
+  const ordens = loteOrderIds
+    .map(id => appState.ordens.find(o => o.id === id))
+    .filter(Boolean);
+
+  if (!ordens || ordens.length === 0 || ordens.length !== loteOrderIds.length) {
+    throw new Error('LOTE_CORROMPEU');
+  }
+
+  const duplicatedOps = _findDuplicateLogicalOps(ordens);
+  if (duplicatedOps.length) {
+    throw new Error(`LOTE_OP_DUPLICADA:${duplicatedOps.map(g => g.ids.join(' + ')).join(' | ')}`);
+  }
+
+  const invalidOps = ordens.filter(o => {
+    const qty = Number(o.qty);
+    const dim = Number(o.dim);
+    return !Number.isInteger(qty) || qty <= 0 || !Number.isFinite(dim) || dim <= 0;
+  });
+  if (invalidOps.length) {
+    throw new Error(`LOTE_OP_INVALIDA:${invalidOps.map(o => o.id).join(', ')}`);
   }
 
   // 1. Montar TODAS as peças individuais a partir das OPs (cada unidade é uma peça separada)
   const allPieces = [];
   ordens.forEach(o => {
-    for (let i = 0; i < o.qty; i++) {
+    const qty = Number(o.qty);
+    for (let i = 0; i < qty; i++) {
       allPieces.push({
         pieceId: `${o.id}#${i + 1}`,
         pieceNo: i + 1,
-        qty: o.qty,
+        qty,
         op: o.id,
         sku: o.sku,
         dim: parseFloat(o.dim),
@@ -333,6 +383,39 @@ function _calcOtimizacao() {
   _validatePlanPieceCounts(plans, allPieces);
 
   _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen);
+}
+
+function _findDuplicateLogicalOps(ordens) {
+  const groups = new Map();
+  ordens.forEach(o => {
+    const key = _logicalOpKey(o.id);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o.id);
+  });
+  return [...groups.values()]
+    .filter(ids => ids.length > 1)
+    .map(ids => ({ ids }));
+}
+
+function _logicalOpKey(value) {
+  return String(value ?? '')
+    .split('#')[0]
+    .trim()
+    .toUpperCase()
+    .replace(/^(OP[\s-]*)+/i, '')
+    .trim()
+    .replace(/[\s-]+/g, '');
+}
+
+function _otimEsc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
 }
 
 function _toPlanPiece(pc) {

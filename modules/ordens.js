@@ -158,6 +158,14 @@ function _fmtDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
+function _normalizeOpId(rawId) {
+  const value = String(rawId ?? '').trim().toUpperCase();
+  if (!value) return '';
+  const withoutPrefix = value.replace(/^(OP[\s-]*)+/i, '').trim().replace(/\s+/g, '-');
+  if (!withoutPrefix) return '';
+  return `OP-${withoutPrefix}`;
+}
+
 function _isRetrabalhoOrdem(o) {
   return !!(o && o._meta && o._meta.rework);
 }
@@ -293,7 +301,8 @@ function _salvarOrdem() {
   if (!skuExists) { showToast('SKU não encontrado no catálogo!', 'error'); return; }
   
   // Formatar o ID: adicionar prefixo OP- se o usuário não colocou
-  const id = rawId.toUpperCase().startsWith('OP-') ? rawId.toUpperCase() : `OP-${rawId}`;
+  const id = _normalizeOpId(rawId);
+  if (!id) { showToast('Preencha um número de OP válido!', 'error'); return; }
   
   // Verificar duplicata
   if (appState.ordens.some(o => o.id === id)) { showToast(`Ordem ${id} já existe!`, 'error'); return; }
@@ -308,7 +317,7 @@ function _salvarOrdem() {
 }
 
 function _criarLote() {
-  const sel = [...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id);
+  const sel = [...new Set([...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id))];
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
   
   // Solicitar número do lote ao usuário
@@ -455,13 +464,19 @@ async function _handleExcelUpload(e) {
 
       const clearFirst = confirm("Deseja LIMPAR a lista de ordens pendentes atual antes de importar?\n\n(Clique em CANCELAR para apenas ADICIONAR as novas ordens)");
       if (clearFirst) {
+        const pendingToClear = appState.ordens
+          .filter(o => o.status === 'pending')
+          .map(o => o.id);
+
         // Remove only pending orders (keep those in batch)
         appState.ordens = appState.ordens.filter(o => o.status !== 'pending');
-        // Note: they stay in DB but will be overwritten by same ID or added as new. 
-        // For a full clear of pending from DB, more logic is needed, but this helps the user's view.
+        for (const id of pendingToClear) {
+          await DB.deleteOrdem(id);
+        }
       }
 
       let count = 0;
+      const importedIds = new Set();
       
       // Itera a partir da linha index 1 assumindo que 0 tem cabeçalho
       // Mas checa todas as linhas para ver se têm dados mínimos válidos
@@ -482,12 +497,7 @@ async function _handleExcelUpload(e) {
         }
 
         const opId = String(r[1] || '').trim();
-        let finalId;
-        if (opId) {
-          finalId = `OP-${opId}`;
-        } else {
-          finalId = `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
-        }
+        const finalId = _normalizeOpId(opId) || `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
         const clienteStr = String(r[4] || '').trim();
         
         let entrega = '';
@@ -527,7 +537,8 @@ async function _handleExcelUpload(e) {
         }
         
         DB.saveOrdem(novaOrdem); 
-        count++;
+        if (!importedIds.has(finalId)) count++;
+        importedIds.add(finalId);
       }
       
       DB.saveConfig(appState.configs);
@@ -540,7 +551,8 @@ async function _handleExcelUpload(e) {
       showToast('Erro ao processar arquivo Excel. Verifique o formato.', 'error');
     } finally {
       // reseta o input
-      document.getElementById('opExcelFile').value = '';
+      const fileInput = document.getElementById('opExcelFile');
+      if (fileInput) fileInput.value = '';
       renderOrdens(); 
       updateBadges();
     }
@@ -612,6 +624,7 @@ function _processarColarExcel() {
   const idxEtiqueta = header.indexOf('numero_etiqueta');
 
   let count = 0;
+  const importedIds = new Set();
   for (let i = 1; i < lines.length; i++) {
     const r = lines[i].split('\\t');
     // Allow lines that don't have exactly the same length if they have at least up to the required columns
@@ -639,7 +652,7 @@ function _processarColarExcel() {
     }
 
     const opIdStr = idxOp !== -1 ? String(r[idxOp] || '').trim() : '';
-    let finalId = opIdStr ? (opIdStr.toUpperCase().startsWith('OP-') ? opIdStr.toUpperCase() : `OP-${opIdStr}`) : `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
+    const finalId = _normalizeOpId(opIdStr) || `OP-IMP-${String(appState.configs.nextImportOpId++).padStart(4,'0')}`;
     
     const clienteStr = idxCliente !== -1 ? String(r[idxCliente] || '').trim() : '';
     let entrega = idxEntrega !== -1 ? String(r[idxEntrega] || '').trim() : '';
@@ -676,7 +689,8 @@ function _processarColarExcel() {
     }
     
     DB.saveOrdem(novaOrdem); 
-    count++;
+    if (!importedIds.has(finalId)) count++;
+    importedIds.add(finalId);
   }
 
   DB.saveConfig(appState.configs);
