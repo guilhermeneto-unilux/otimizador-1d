@@ -129,6 +129,18 @@ function _startOtimizacao() {
             </div>
           `;
         }
+      } else if (String(e.message || '').startsWith('PLAN_PIECE_MISMATCH')) {
+        showToast('O otimizador detectou uma inconsistência no plano e bloqueou o resultado. Tente recalcular o lote.', 'error');
+        if (area) {
+          area.innerHTML = `
+            <div class="empty-state" style="background:var(--white); border:1px dashed #ef4444; border-radius:var(--radius); height:100%; display:flex; flex-direction:column; gap:16px; color:#ef4444;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <p>Plano inconsistente: a quantidade de peças calculada não bate com as OPs do lote. O plano não foi aprovado nem salvo.</p>
+            </div>
+          `;
+        }
       } else {
         showToast('Erro durante a otimização: ' + e.message, 'error');
         console.error('Detalhes completos do erro:', e);
@@ -169,7 +181,15 @@ function _calcOtimizacao() {
   const allPieces = [];
   ordens.forEach(o => {
     for (let i = 0; i < o.qty; i++) {
-      allPieces.push({ op: o.id, sku: o.sku, dim: parseFloat(o.dim), entrega: o.entrega || '' });
+      allPieces.push({
+        pieceId: `${o.id}#${i + 1}`,
+        pieceNo: i + 1,
+        qty: o.qty,
+        op: o.id,
+        sku: o.sku,
+        dim: parseFloat(o.dim),
+        entrega: o.entrega || ''
+      });
     }
   });
 
@@ -255,7 +275,7 @@ function _calcOtimizacao() {
           len: scrap.medida,
           usable: available,
           sku,
-          pcs: packed.map(p => ({ op: p.op, sku: p.sku, dim: p.dim, entrega: p.entrega })),
+          pcs: packed.map(_toPlanPiece),
           rem: waste
         });
         console.log(`[OTIM] Usado retalho ${scrap.id} do setor ${scrap.endereco || '—'}`);
@@ -286,7 +306,7 @@ function _calcOtimizacao() {
           len: effBiggest,
           usable: effBiggest - cfgTrim,
           sku,
-          pcs: [{ op: pc.op, sku: pc.sku, dim: pc.dim, entrega: pc.entrega }],
+          pcs: [_toPlanPiece(pc)],
           rem: (effBiggest - cfgTrim) - pc.dim
         });
         continue;
@@ -302,7 +322,7 @@ function _calcOtimizacao() {
         len: effectiveLen,
         usable: uLen,
         sku,
-        pcs: packed.map(p => ({ op: p.op, sku: p.sku, dim: p.dim, entrega: p.entrega })),
+        pcs: packed.map(_toPlanPiece),
         rem: uLen - usedLen
       });
     }
@@ -310,8 +330,21 @@ function _calcOtimizacao() {
 
   // ── FASE 3: Refinamento — Tentar consolidar bins sub-utilizados ──
   _refinePlans(plans, cfgTrim);
+  _validatePlanPieceCounts(plans, allPieces);
 
   _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen);
+}
+
+function _toPlanPiece(pc) {
+  return {
+    pieceId: pc.pieceId,
+    pieceNo: pc.pieceNo,
+    qty: pc.qty,
+    op: pc.op,
+    sku: pc.sku,
+    dim: pc.dim,
+    entrega: pc.entrega
+  };
 }
 
 /* ── Empacota o máximo de peças que cabem num bin de capacidade `capacity` ── */
@@ -424,9 +457,10 @@ function _refinePlans(plans, cfgTrim) {
       // Tentar realocar TODAS as peças deste bin para outros bins
       const sourcePcs = [...sourceBin.pcs];
       let allMoved = true;
+      const movedCopies = [];
 
       for (const pc of sourcePcs) {
-        let moved = false;
+        let wasMoved = false;
         for (let j = 0; j < plans.length; j++) {
           if (j === binsByUtil[i].idx) continue;
           const targetBin = plans[j];
@@ -436,11 +470,12 @@ function _refinePlans(plans, cfgTrim) {
           if (targetBin.rem >= pc.dim) {
             targetBin.pcs.push(pc);
             targetBin.rem -= pc.dim;
-            moved = true;
+            movedCopies.push({ targetBin, pc });
+            wasMoved = true;
             break;
           }
         }
-        if (!moved) {
+        if (!wasMoved) {
           allMoved = false;
           break;
         }
@@ -453,25 +488,14 @@ function _refinePlans(plans, cfgTrim) {
         sourceBin._remove = true;
         improved = true;
       } else {
-        // Reverter: tirar as peças que foram movidas de volta
-        for (const pc of sourcePcs) {
-          // Verificar se esta peça está no sourceBin.pcs
-          const stillInSource = sourceBin.pcs.some(sp => sp === pc);
-          if (!stillInSource) {
-            // Ela foi movida — trazê-la de volta
-            for (let j = 0; j < plans.length; j++) {
-              if (j === binsByUtil[i].idx) continue;
-              const targetBin = plans[j];
-              const idx = targetBin.pcs.indexOf(pc);
-              if (idx !== -1) {
-                targetBin.pcs.splice(idx, 1);
-                targetBin.rem += pc.dim;
-                break;
-              }
-            }
-            sourceBin.pcs.push(pc);
+        // Reverter as cópias já feitas nos bins destino nesta tentativa parcial.
+        movedCopies.forEach(({ targetBin, pc }) => {
+          const idx = targetBin.pcs.lastIndexOf(pc);
+          if (idx !== -1) {
+            targetBin.pcs.splice(idx, 1);
+            targetBin.rem += pc.dim;
           }
-        }
+        });
       }
     }
 
@@ -479,6 +503,28 @@ function _refinePlans(plans, cfgTrim) {
     for (let i = plans.length - 1; i >= 0; i--) {
       if (plans[i]._remove) plans.splice(i, 1);
     }
+  }
+}
+
+function _validatePlanPieceCounts(plans, expectedPieces) {
+  const expected = new Map();
+  expectedPieces.forEach(pc => expected.set(pc.pieceId, pc));
+
+  const seen = new Map();
+  plans.forEach(plan => {
+    (plan.pcs || []).forEach(pc => {
+      const id = pc.pieceId || `${pc.op}|${pc.sku}|${pc.dim}|legacy`;
+      seen.set(id, (seen.get(id) || 0) + 1);
+    });
+  });
+
+  const duplicates = [...seen.entries()].filter(([, count]) => count > 1).map(([id]) => id);
+  const missing = [...expected.keys()].filter(id => !seen.has(id));
+  const extras = [...seen.keys()].filter(id => !expected.has(id));
+
+  if (duplicates.length || missing.length || extras.length) {
+    console.error('[OTIM] Plano inconsistente', { duplicates, missing, extras });
+    throw new Error(`PLAN_PIECE_MISMATCH duplicates=${duplicates.length} missing=${missing.length} extras=${extras.length}`);
   }
 }
 
@@ -608,8 +654,9 @@ function _renderBarCard(p, idx, cfgTrim) {
   const segs = p.pcs.map(pc => {
     const pct = (pc.dim / p.len * 100).toFixed(2);
     const bg = p.type === 'scrap' ? '#f59e0b' : opColors[pc.op];
-    return `<div class="bar-seg" style="width:${pct}%;background:${bg}; border-right: 2px solid #fff; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#fff;" title="${pc.op}: ${fmtM(pc.dim)}">
-      <span style="font-size:9px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${pc.op}</span>
+    const label = _pieceLabel(pc);
+    return `<div class="bar-seg" style="width:${pct}%;background:${bg}; border-right: 2px solid #fff; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#fff;" title="${label}: ${fmtM(pc.dim)}">
+      <span style="font-size:9px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${label}</span>
       <span style="font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${fmtM(pc.dim)}</span>
     </div>`;
   }).join('');
@@ -659,7 +706,7 @@ function _renderBarCard(p, idx, cfgTrim) {
       </div>
       <div class="bar-track">${segs}${refileEl}${wasteEl}</div>
       <div class="bar-meta">
-        <span>${p.pcs.length} peça(s): ${p.pcs.map(pc => `${pc.op}(${fmtM(pc.dim)})`).join(', ')}</span>
+        <span>${p.pcs.length} peça(s): ${p.pcs.map(pc => `${_pieceLabel(pc)}(${fmtM(pc.dim)})`).join(', ')}</span>
         <span style="font-weight:600; color:${geraSobra ? '#16a34a' : p.rem > 0 ? '#ef4444' : 'var(--text-400)'};">
           ${geraSobra 
             ? `♻ Sobra: ${fmtM(p.rem)} → Vai para Estoque` 
