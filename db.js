@@ -43,7 +43,7 @@ const DB = {
       console.log('☁️ Sincronizando tabelas do Supabase...');
       try {
         // Fetch all tables in parallel to build the memory state
-        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, cfgPlanosReq, cfgComprasReq, cfgSobraHistoryReq] = await Promise.all([
+        const [skusReq, sobrasReq, ordensReq, lotesReq, histReq, cfgReq, usersReq, cfgPlanosReq, cfgComprasReq] = await Promise.all([
           supabaseClient.from('unilux_skus').select('*'),
           supabaseClient.from('unilux_sobras').select('*'),
           supabaseClient.from('unilux_ordens').select('*'),
@@ -52,8 +52,7 @@ const DB = {
           supabaseClient.from('unilux_configs').select('data').eq('id', 1).single(),
           supabaseClient.from('unilux_users').select(UNILUX_PROFILE_COLUMNS).order('name'),
           supabaseClient.from('unilux_configs').select('data').eq('id', 2).single(),
-          supabaseClient.from('unilux_configs').select('data').eq('id', 3).single(),
-          supabaseClient.from('unilux_configs').select('data').eq('id', 4).single()
+          supabaseClient.from('unilux_configs').select('data').eq('id', 3).single()
         ]);
 
         if (skusReq.error) {
@@ -106,8 +105,8 @@ const DB = {
           return p;
         });
         appState.comprasConfig = this._normalizeComprasConfig(cfgComprasReq.data?.data);
-        appState.sobraHistory = this._normalizeSobraHistory(cfgSobraHistoryReq.data?.data);
         if (cfgReq.data && cfgReq.data.data) appState.configs = cfgReq.data.data;
+        appState.sobraHistory = this._normalizeSobraHistory(cfgPlanosReq.data?.data?.sobra_history);
         
         // Ensure counters exist in configs
         if (!appState.configs) appState.configs = {};
@@ -123,6 +122,16 @@ const DB = {
         appState.nextOrdemId = appState.configs.nextOrdemId;
         appState.nextImportOpId = appState.configs.nextImportOpId;
         appState.nextPlanoId = appState.configs.nextPlanId;
+
+        const recoveredScrapEvents = this._recoverSobraHistoryFromPlans();
+        if (recoveredScrapEvents > 0) {
+          try {
+            await this.saveSobraHistoryAll();
+            console.info(`[DB] ${recoveredScrapEvents} evento(s) de sobra recuperado(s) dos planos.`);
+          } catch (historyError) {
+            console.warn('Dados carregados, mas a recuperação do histórico de sobras ficará pendente:', historyError);
+          }
+        }
 
         this._updateStatusUI('Database Ativo');
 
@@ -194,6 +203,67 @@ const DB = {
     return events
       .filter(Boolean)
       .sort((a, b) => new Date(b.timestamp || b.data || 0) - new Date(a.timestamp || a.data || 0));
+  },
+
+  _recoverSobraHistoryFromPlans() {
+    if (!Array.isArray(appState.sobraHistory)) appState.sobraHistory = [];
+    const existing = new Set(appState.sobraHistory.map(event => [
+      event?.action || '',
+      event?.planoId || '',
+      event?.sobra?.id || ''
+    ].join('|')));
+    const recovered = [];
+
+    (appState.planos || []).forEach(plan => {
+      const savedSnapshots = Array.isArray(plan.sobrasUtilizadas) ? plan.sobrasUtilizadas : [];
+      const mapSnapshots = (Array.isArray(plan.mapa) ? plan.mapa : [])
+        .filter(bin => bin?.type === 'scrap')
+        .map(bin => ({
+          id: bin.srcId || '',
+          sku: bin.sku || '',
+          medida: Number(bin.len) || 0,
+          endereco: bin.srcAddr || '',
+          origem: '',
+          criacao: ''
+        }));
+      const snapshots = [...new Map(
+        [...savedSnapshots, ...mapSnapshots]
+          .filter(sobra => sobra?.id)
+          .map(sobra => [String(sobra.id), sobra])
+      ).values()];
+
+      snapshots.forEach(sobra => {
+        const key = ['utilizada', plan.id || '', sobra.id || ''].join('|');
+        if (existing.has(key)) return;
+        existing.add(key);
+        recovered.push({
+          id: `SH-RECOVERED-${plan.id || plan.loteId || 'PLANO'}-${sobra.id}`,
+          timestamp: plan.approvedAt || plan.data || new Date().toISOString(),
+          action: 'utilizada',
+          sobra: {
+            id: sobra.id || '',
+            sku: sobra.sku || '',
+            medida: Number(sobra.medida) || 0,
+            endereco: sobra.endereco || '',
+            origem: sobra.origem || '',
+            criacao: sobra.criacao || ''
+          },
+          reason: 'Otimização aprovada (histórico recuperado)',
+          obs: '',
+          loteId: plan.loteId || '',
+          planoId: plan.id || '',
+          user: plan.approvedBy || {}
+        });
+      });
+    });
+
+    if (recovered.length) {
+      appState.sobraHistory = this._normalizeSobraHistory([
+        ...recovered,
+        ...appState.sobraHistory
+      ]).slice(0, 500);
+    }
+    return recovered.length;
   },
 
   _updateStatusUI(statusTxt) {
@@ -304,9 +374,52 @@ const DB = {
 
   async savePlanosAll() {
     if (!supabaseClient) return;
-    // Plans are stored as a JSON blob in unilux_configs row id=2 (no separate table needed)
-    const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 2, data: { planos: appState.planos } });
-    if (error) {
+    // Planos e seu histórico de sobras compartilham o registro operacional id=2.
+    const currentReq = await supabaseClient
+      .from('unilux_configs')
+      .select('data')
+      .eq('id', 2)
+      .maybeSingle();
+    if (currentReq.error || !currentReq.data) {
+      const error = currentReq.error || new Error('PLANOS_CONFIG_MISSING');
+      console.error('Erro ao carregar planos:', error);
+      throw error;
+    }
+
+    const currentData = currentReq.data.data || {};
+    const plansById = new Map();
+    [
+      ...(Array.isArray(appState.planos) ? appState.planos : []),
+      ...(Array.isArray(currentData.planos) ? currentData.planos : [])
+    ].forEach(plan => {
+      const key = plan?.id || `${plan?.loteId || ''}|${plan?.data || ''}`;
+      if (key && !plansById.has(key)) plansById.set(key, plan);
+    });
+    appState.planos = [...plansById.values()];
+
+    const historyById = new Map();
+    [
+      ...this._normalizeSobraHistory(appState.sobraHistory),
+      ...this._normalizeSobraHistory(currentData.sobra_history)
+    ].forEach(event => {
+      if (event?.id && !historyById.has(event.id)) historyById.set(event.id, event);
+    });
+    appState.sobraHistory = this._normalizeSobraHistory([...historyById.values()]).slice(0, 500);
+
+    const saveReq = await supabaseClient
+      .from('unilux_configs')
+      .update({
+        data: {
+          ...currentData,
+          planos: appState.planos,
+          sobra_history: { events: appState.sobraHistory }
+        }
+      })
+      .eq('id', 2)
+      .select('id')
+      .maybeSingle();
+    if (saveReq.error || !saveReq.data) {
+      const error = saveReq.error || new Error('PLANOS_UPDATE_NOT_APPLIED');
       console.error('Erro ao salvar planos:', error);
       throw error;
     }
@@ -327,9 +440,42 @@ const DB = {
 
   async saveSobraHistoryAll() {
     if (!supabaseClient) return;
-    appState.sobraHistory = this._normalizeSobraHistory({ events: appState.sobraHistory }).slice(0, 500);
-    const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 4, data: { events: appState.sobraHistory } });
-    if (error) {
+    const localEvents = this._normalizeSobraHistory({ events: appState.sobraHistory });
+    const currentReq = await supabaseClient
+      .from('unilux_configs')
+      .select('data')
+      .eq('id', 2)
+      .maybeSingle();
+
+    if (currentReq.error) {
+      console.error('Erro ao carregar histórico de sobras:', currentReq.error);
+      throw currentReq.error;
+    }
+    if (!currentReq.data) {
+      throw new Error('SOBRA_HISTORY_CONFIG_MISSING');
+    }
+
+    const currentConfig = currentReq.data.data || {};
+    const remoteEvents = this._normalizeSobraHistory(currentConfig.sobra_history);
+    const byId = new Map();
+    [...localEvents, ...remoteEvents].forEach(event => {
+      if (event?.id && !byId.has(event.id)) byId.set(event.id, event);
+    });
+    appState.sobraHistory = this._normalizeSobraHistory([...byId.values()]).slice(0, 500);
+    const operationalData = {
+      ...currentConfig,
+      planos: Array.isArray(currentConfig.planos) ? currentConfig.planos : appState.planos,
+      sobra_history: { events: appState.sobraHistory }
+    };
+
+    const saveReq = await supabaseClient
+      .from('unilux_configs')
+      .update({ data: operationalData })
+      .eq('id', 2)
+      .select('id')
+      .maybeSingle();
+    if (saveReq.error || !saveReq.data) {
+      const error = saveReq.error || new Error('SOBRA_HISTORY_UPDATE_NOT_APPLIED');
       console.error('Erro ao salvar histórico de sobras:', error);
       throw error;
     }
@@ -347,8 +493,29 @@ const DB = {
   },
 
   async deleteSobra(id) {
+    return this.deleteSobras([id]);
+  },
+  async deleteSobras(ids) {
     if (!supabaseClient) return;
-    await supabaseClient.from('unilux_sobras').delete().eq('id', id);
+    const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+    if (!uniqueIds.length) return [];
+
+    const { data, error } = await supabaseClient
+      .from('unilux_sobras')
+      .delete()
+      .in('id', uniqueIds)
+      .select('id');
+    if (error) {
+      console.error('Erro ao excluir sobras:', error);
+      throw error;
+    }
+
+    const deletedIds = new Set((data || []).map(row => row.id));
+    const missingIds = uniqueIds.filter(id => !deletedIds.has(id));
+    if (missingIds.length) {
+      throw new Error(`SOBRAS_DELETE_NOT_APPLIED:${missingIds.join(',')}`);
+    }
+    return [...deletedIds];
   },
 
   async deleteUser(id) {

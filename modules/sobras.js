@@ -479,14 +479,13 @@ function _sobraHistorySnapshot(s) {
   };
 }
 
-async function _registrarHistoricoSobra(action, sobra, extra = {}) {
+function _criarEventoHistoricoSobra(action, sobra, extra = {}) {
   if (!sobra) return null;
-  if (!Array.isArray(appState.sobraHistory)) appState.sobraHistory = [];
 
   const user = appState.currentUser || {};
-  const event = {
+  return {
     id: `SH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    timestamp: new Date().toISOString(),
+    timestamp: extra.timestamp || new Date().toISOString(),
     action,
     sobra: _sobraHistorySnapshot(sobra),
     reason: extra.reason || extra.motivo || '',
@@ -499,11 +498,37 @@ async function _registrarHistoricoSobra(action, sobra, extra = {}) {
       email: user.email || ''
     }
   };
+}
 
-  appState.sobraHistory.unshift(event);
-  appState.sobraHistory = appState.sobraHistory.slice(0, 500);
-  await DB.saveSobraHistoryAll();
-  return event;
+async function _registrarHistoricoSobras(action, sobras, extra = {}) {
+  if (!Array.isArray(appState.sobraHistory)) appState.sobraHistory = [];
+
+  const uniqueSobras = [...new Map(
+    (Array.isArray(sobras) ? sobras : [sobras])
+      .filter(Boolean)
+      .map(sobra => [String(sobra.id || ''), sobra])
+  ).values()];
+  if (!uniqueSobras.length) return [];
+
+  const previousHistory = [...appState.sobraHistory];
+  const timestamp = new Date().toISOString();
+  const events = uniqueSobras
+    .map(sobra => _criarEventoHistoricoSobra(action, sobra, { ...extra, timestamp }))
+    .filter(Boolean);
+
+  appState.sobraHistory = [...events, ...previousHistory].slice(0, 500);
+  try {
+    await DB.saveSobraHistoryAll();
+    return events;
+  } catch (error) {
+    appState.sobraHistory = previousHistory;
+    throw error;
+  }
+}
+
+async function _registrarHistoricoSobra(action, sobra, extra = {}) {
+  const events = await _registrarHistoricoSobras(action, [sobra], extra);
+  return events[0] || null;
 }
 
 function _sobrasSearchRows(filtered) {

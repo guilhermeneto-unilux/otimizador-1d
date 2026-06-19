@@ -401,7 +401,14 @@ function _calcOtimizacao() {
   _refinePlans(plans, cfgTrim);
   _validatePlanPieceCounts(plans, allPieces);
 
-  _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen);
+  _renderResultados(plans, loteId, _usedScrapIdsFromPlans(plans), cfgTrim, cfgPen);
+}
+
+function _usedScrapIdsFromPlans(plans) {
+  return [...new Set((plans || [])
+    .filter(plan => plan?.type === 'scrap' && Array.isArray(plan.pcs) && plan.pcs.length > 0)
+    .map(plan => plan.srcId)
+    .filter(Boolean))];
 }
 
 function _otimFindSku(code) {
@@ -851,12 +858,20 @@ async function _finalizarOtimizacao() {
   });
 
   // Consumir sobras usadas
-  const sobrasConsumidas = usedScraps
+  const usedScrapIds = [...new Set(usedScraps)];
+  const sobrasConsumidas = usedScrapIds
     .map(sid => appState.sobras.find(s => s.id === sid))
     .filter(Boolean);
-  for (const sid of usedScraps) {
-    appState.sobras = appState.sobras.filter(s => s.id !== sid);
-    await DB.deleteSobra(sid);
+  if (sobrasConsumidas.length !== usedScrapIds.length) {
+    throw new Error(`SOBRAS_CONSUMIDAS_INCONSISTENTES:${sobrasConsumidas.length}/${usedScrapIds.length}`);
+  }
+  if (usedScrapIds.length && typeof _registrarHistoricoSobras !== 'function') {
+    throw new Error('SOBRA_HISTORY_HANDLER_MISSING');
+  }
+  if (usedScrapIds.length) {
+    await DB.deleteSobras(usedScrapIds);
+    const usedScrapIdSet = new Set(usedScrapIds);
+    appState.sobras = appState.sobras.filter(s => !usedScrapIdSet.has(s.id));
   }
 
   // Baixar barras virgens usadas agrupadas pelo SKU (Multi-Length Support)
@@ -912,6 +927,14 @@ async function _finalizarOtimizacao() {
      approvedAt: finalizedAt,
      approvedBy: approver,
      skuPlanIds,
+     sobrasUtilizadas: sobrasConsumidas.map(s => ({
+       id: s.id || '',
+       sku: s.sku || '',
+       medida: Number(s.medida) || 0,
+       endereco: s.endereco || '',
+       origem: s.origem || '',
+       criacao: s.criacao || ''
+     })),
      mapa: plans
   };
   
@@ -935,17 +958,17 @@ async function _finalizarOtimizacao() {
   
   // Save all plans to unilux_configs row id=2 (no separate table needed)
   await DB.savePlanosAll();
-  if (typeof _registrarHistoricoSobra === 'function') {
+  if (sobrasConsumidas.length) {
     try {
-      for (const sobra of sobrasConsumidas) {
-        await _registrarHistoricoSobra('utilizada', sobra, {
-          loteId,
-          planoId: planoFinal.id,
-          reason: 'Otimização aprovada'
-        });
-      }
+      await _registrarHistoricoSobras('utilizada', sobrasConsumidas, {
+        loteId,
+        planoId: planoFinal.id,
+        reason: 'Otimização aprovada'
+      });
     } catch (err) {
-      console.warn('Plano salvo, mas o histórico de sobras não pôde ser atualizado:', err);
+      console.error('Plano salvo, mas o histórico de sobras não pôde ser atualizado:', err);
+      showToast('O plano foi salvo, mas o histórico das sobras falhou. Avise o administrador.', 'error');
+      throw err;
     }
   }
   await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name}`);
