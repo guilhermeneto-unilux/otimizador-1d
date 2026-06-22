@@ -325,8 +325,14 @@ const DB = {
 
   async saveConfig(c) {
     if (!supabaseClient) return;
-    const { error } = await supabaseClient.from('unilux_configs').upsert({ id: 1, data: c });
-    if (error) {
+    const saveReq = await supabaseClient
+      .from('unilux_configs')
+      .update({ data: c })
+      .eq('id', 1)
+      .select('id')
+      .maybeSingle();
+    if (saveReq.error || !saveReq.data) {
+      const error = saveReq.error || new Error('CONFIG_UPDATE_NOT_APPLIED');
       console.error('Erro Configs:', error);
       throw error;
     }
@@ -339,6 +345,20 @@ const DB = {
       console.error('Erro Sobras:', error);
       throw error;
     }
+  },
+
+  async createSobra(s) {
+    if (!supabaseClient) return s;
+    const { data, error } = await supabaseClient
+      .from('unilux_sobras')
+      .insert(s)
+      .select('*')
+      .single();
+    if (error) {
+      console.error('Erro ao cadastrar sobra:', error);
+      throw error;
+    }
+    return data;
   },
 
   async saveLote(l) {

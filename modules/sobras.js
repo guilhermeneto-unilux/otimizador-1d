@@ -666,6 +666,14 @@ function _clickWmsSlot(endereco, isOccupied) {
   }
 }
 
+function _generateManualSobraId() {
+  const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 17);
+  const randomPart = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 6)
+    : Math.random().toString(36).slice(2, 8);
+  return `SC-M-${timestamp}-${randomPart.toUpperCase()}`;
+}
+
 async function _salvarSobra(btnEl) {
   if (btnEl) {
     btnEl.dataset.originalText = btnEl.textContent;
@@ -714,7 +722,7 @@ async function _salvarSobra(btnEl) {
   }
 
   const novaSobra = {
-    id: `SC-${String(appState.nextSobraId++).padStart(3,'0')}`,
+    id: _generateManualSobraId(),
     sku,
     medida: med,
     criacao: new Date().toISOString().split('T')[0],
@@ -723,16 +731,8 @@ async function _salvarSobra(btnEl) {
   };
 
   try {
-    appState.sobras.push(novaSobra);
-
-    // Atualiza o contador no configs para persistência
-    appState.configs.nextSobraId = appState.nextSobraId;
-
-    // Salva a sobra e as configurações (novo contador)
-    await Promise.all([
-      DB.saveSobra(novaSobra),
-      DB.saveConfig(appState.configs)
-    ]);
+    const savedSobra = await DB.createSobra(novaSobra);
+    appState.sobras.push(savedSobra || novaSobra);
 
     DB.log("Cadastrou Sobra Manual", "unilux_sobras", `${novaSobra.sku} em ${endereco}`);
 
@@ -741,8 +741,6 @@ async function _salvarSobra(btnEl) {
   } catch (err) {
     console.error('Erro ao salvar sobra:', err);
     showToast('Erro ao salvar no banco de dados. Verifique sua conexão.', 'error');
-    // Remove da memória se falhou no banco
-    appState.sobras = appState.sobras.filter(s => s.id !== novaSobra.id);
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl.dataset.originalText; }
     return;
   }
