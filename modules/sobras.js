@@ -731,6 +731,13 @@ async function _salvarSobra(btnEl) {
   };
 
   try {
+    const persistedAtAddress = await DB.findSobrasByEndereco(endereco);
+    if (persistedAtAddress.length) {
+      showToast(`O endereço ${endereco} já está ocupado no banco de dados.`, 'error');
+      closeModal();
+      return;
+    }
+
     const savedSobra = await DB.createSobra(novaSobra);
     appState.sobras.push(savedSobra || novaSobra);
 
@@ -807,16 +814,37 @@ async function _confirmarExcluirSobra(id, btnEl) {
   }
 
   try {
-    await DB.deleteSobra(id);
-    appState.sobras = appState.sobras.filter(item => item.id !== id);
-    try {
-      await _registrarHistoricoSobra('removida', s, { reason, obs });
-    } catch (histErr) {
-      console.warn('Sobra excluída, mas o histórico não pôde ser atualizado:', histErr);
+    const persistedAtAddress = s.endereco
+      ? await DB.findSobrasByEndereco(s.endereco)
+      : [];
+    const targetSobras = s.endereco ? persistedAtAddress : [s];
+
+    if (!targetSobras.length) {
+      appState.sobras = appState.sobras.filter(item => item.endereco !== s.endereco);
+      showToast('A sobra já havia sido excluída do banco. O mapa foi atualizado.', 'info');
+      closeModal();
+      renderSobras();
+      updateBadges();
+      return;
     }
-    const details = `${s.sku} de ${s.endereco || 'sem endereço'} · ${fmtM(s.medida)} · Motivo: ${reason}${obs ? ` · Obs: ${obs}` : ''}`;
+
+    const targetIds = targetSobras.map(item => item.id);
+
+    await DB.deleteSobras(targetIds);
+    const targetIdSet = new Set(targetIds);
+    appState.sobras = appState.sobras.filter(item => (
+      s.endereco ? item.endereco !== s.endereco : !targetIdSet.has(item.id)
+    ));
+    try {
+      await _registrarHistoricoSobras('removida', targetSobras, { reason, obs });
+    } catch (histErr) {
+      console.warn('Sobras excluídas, mas o histórico não pôde ser atualizado:', histErr);
+    }
+    const details = `${targetSobras.length} registro(s) de ${s.endereco || 'sem endereço'} · IDs: ${targetIds.join(', ')} · Motivo: ${reason}${obs ? ` · Obs: ${obs}` : ''}`;
     await DB.log("Excluiu Sobra", "unilux_sobras", details);
-    showToast('Sobra excluída.', 'info');
+    showToast(targetSobras.length > 1
+      ? `${targetSobras.length} registros duplicados removidos de ${s.endereco}.`
+      : 'Sobra excluída.', 'info');
     closeModal();
     renderSobras();
     updateBadges();

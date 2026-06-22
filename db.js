@@ -361,6 +361,22 @@ const DB = {
     return data;
   },
 
+  async findSobrasByEndereco(endereco) {
+    if (!endereco) return [];
+    if (!supabaseClient) {
+      return (appState.sobras || []).filter(sobra => sobra.endereco === endereco);
+    }
+    const { data, error } = await supabaseClient
+      .from('unilux_sobras')
+      .select('*')
+      .eq('endereco', endereco);
+    if (error) {
+      console.error('Erro ao consultar endereço de sobra:', error);
+      throw error;
+    }
+    return data || [];
+  },
+
   async saveLote(l) {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.from('unilux_lotes').upsert(l);
