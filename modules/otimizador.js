@@ -1,6 +1,8 @@
 /* ===== OTIMIZADOR PRO – UNILUX 1D (Advanced FFD + Scrap-First) ===== */
 
 const SEG_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#0ea5e9','#6366f1','#06b6d4','#f97316','#ec4899','#818cf8','#a855f7'];
+const OTIM_STRATEGY_CURRENT = 'current';
+const OTIM_STRATEGY_FORCE_SCRAPS = 'force-scraps';
 
 function renderOtimizador() {
   const lotesDisp = appState.lotes.filter(l => l.status === 'pending' && l.ordens && l.ordens.length > 0);
@@ -26,6 +28,17 @@ function renderOtimizador() {
               ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} linha(s) · ${_lotePieceCount(l)} peça(s)</option>`).join('')}
             </select>
             <div class="form-hint" style="margin-top:8px;">Motor <b>FFD Avançado</b>: agrupa por SKU, usa dimensão de corte real de cada OP, prioriza retalhos (≤ 20% desperdício), empacota múltiplas peças por barra para minimizar matéria-prima. Sobra mínima: <b>conf. por SKU</b>.</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Estratégia de Otimização</label>
+            <select class="form-control" id="otimStrategy">
+              <option value="${OTIM_STRATEGY_CURRENT}" selected>Melhor aproveitamento (estratégia atual)</option>
+              <option value="${OTIM_STRATEGY_FORCE_SCRAPS}">Forçar utilização das sobras</option>
+            </select>
+            <div class="form-hint" style="margin-top:8px;">
+              <b>Melhor aproveitamento</b> mantém exatamente a lógica atual. <b>Forçar utilização</b> usa o máximo possível de sobras compatíveis antes das barras inteiras, mesmo com eficiência menor.
+            </div>
           </div>
         </div>
 
@@ -215,6 +228,9 @@ function _startOtimizacao() {
 
 function _calcOtimizacao() {
   const loteId   = document.getElementById('otimLote').value;
+  const strategy = document.getElementById('otimStrategy')?.value === OTIM_STRATEGY_FORCE_SCRAPS
+    ? OTIM_STRATEGY_FORCE_SCRAPS
+    : OTIM_STRATEGY_CURRENT;
   const cfgTrim  = appState.configs ? (appState.configs.trim_mm || 0) : 0;
   const cfgPen   = appState.configs ? (appState.configs.scrap_penalty_pct || 0) / 100 : 0;
 
@@ -326,40 +342,44 @@ function _calcOtimizacao() {
       .filter(s => s.sku === sku && !usedScraps.includes(s.id))
       .sort((a, b) => a.medida - b.medida); // Menor primeiro para best-fit
 
-    scraps.forEach(scrap => {
-      if (remaining.length === 0) return;
-      const available = scrap.medida - cfgTrim;
-      if (available <= 0) return;
+    if (strategy === OTIM_STRATEGY_FORCE_SCRAPS) {
+      _forceCompatibleScraps(scraps, remaining, cfgTrim, sku, plans, usedScraps);
+    } else {
+      scraps.forEach(scrap => {
+        if (remaining.length === 0) return;
+        const available = scrap.medida - cfgTrim;
+        if (available <= 0) return;
 
-      // Tentar empacotar o máximo de peças neste retalho (FFD)
-      const packed = _packPiecesIntoBin(remaining, available);
+        // Tentar empacotar o máximo de peças neste retalho (FFD)
+        const packed = _packPiecesIntoBin(remaining, available);
 
-      if (packed.length === 0) return;
+        if (packed.length === 0) return;
 
-      const usedLen = packed.reduce((s, pc) => s + pc.dim, 0);
-      const waste = available - usedLen;
-      const wastePct = waste / scrap.medida;
+        const usedLen = packed.reduce((s, pc) => s + pc.dim, 0);
+        const waste = available - usedLen;
+        const wastePct = waste / scrap.medida;
 
-      // Aceitar se: desperdício ≤ 20% OU sobra ≥ min_sobra (gera sub-retalho útil)
-      if (wastePct <= 0.20 || waste >= skuMinSobra) {
-        usedScraps.push(scrap.id);
-        // Remover peças empacotadas da lista de pendentes
-        const packedIdxs = packed.map(p => p._idx);
-        _removePacked(remaining, packedIdxs);
+        // Aceitar se: desperdício ≤ 20% OU sobra ≥ min_sobra (gera sub-retalho útil)
+        if (wastePct <= 0.20 || waste >= skuMinSobra) {
+          usedScraps.push(scrap.id);
+          // Remover peças empacotadas da lista de pendentes
+          const packedIdxs = packed.map(p => p._idx);
+          _removePacked(remaining, packedIdxs);
 
-        plans.push({
-          type: 'scrap',
-          srcId: scrap.id,
-          srcAddr: scrap.endereco || '',
-          len: scrap.medida,
-          usable: available,
-          sku,
-          pcs: packed.map(_toPlanPiece),
-          rem: waste
-        });
-        console.log(`[OTIM] Usado retalho ${scrap.id} do setor ${scrap.endereco || '—'}`);
-      }
-    });
+          plans.push({
+            type: 'scrap',
+            srcId: scrap.id,
+            srcAddr: scrap.endereco || '',
+            len: scrap.medida,
+            usable: available,
+            sku,
+            pcs: packed.map(_toPlanPiece),
+            rem: waste
+          });
+          console.log(`[OTIM] Usado retalho ${scrap.id} do setor ${scrap.endereco || '—'}`);
+        }
+      });
+    }
 
     // ── FASE 2: Barras Virgens — Empacotar peças restantes com FFD ──
     while (remaining.length > 0) {
@@ -398,10 +418,10 @@ function _calcOtimizacao() {
   });
 
   // ── FASE 3: Refinamento — Tentar consolidar bins sub-utilizados ──
-  _refinePlans(plans, cfgTrim);
+  _refinePlans(plans, cfgTrim, strategy === OTIM_STRATEGY_FORCE_SCRAPS);
   _validatePlanPieceCounts(plans, allPieces);
 
-  _renderResultados(plans, loteId, _usedScrapIdsFromPlans(plans), cfgTrim, cfgPen);
+  _renderResultados(plans, loteId, _usedScrapIdsFromPlans(plans), cfgTrim, cfgPen, strategy);
 }
 
 function _usedScrapIdsFromPlans(plans) {
@@ -464,6 +484,58 @@ function _packPiecesIntoBin(remaining, capacity) {
     }
   }
   return packed;
+}
+
+/* ── Força a utilização do maior número possível de sobras compatíveis ──
+     Primeiro reserva uma peça para cada sobra que consegue receber corte.
+     Depois completa o espaço restante sem retirar peças das sobras reservadas. */
+function _forceCompatibleScraps(scraps, remaining, cfgTrim, sku, plans, usedScraps) {
+  if (!Array.isArray(scraps) || !scraps.length || !remaining.length) return;
+
+  const availableScraps = scraps
+    .map(scrap => ({ scrap, available: Number(scrap.medida) - cfgTrim }))
+    .filter(item => Number.isFinite(item.available) && item.available > 0)
+    .sort((a, b) => a.available - b.available);
+
+  // Peças menores primeiro maximizam a quantidade de sobras que recebem ao menos um corte.
+  const seedCandidates = remaining.slice().sort((a, b) => a.dim - b.dim);
+  const forcedBins = [];
+
+  availableScraps.forEach(({ scrap, available }) => {
+    const candidateIndex = seedCandidates.findIndex(pc => pc.dim <= available);
+    if (candidateIndex === -1) return;
+
+    const seed = seedCandidates.splice(candidateIndex, 1)[0];
+    forcedBins.push({ scrap, available, packed: [seed] });
+  });
+
+  if (!forcedBins.length) return;
+
+  _removePacked(remaining, forcedBins.map(bin => bin.packed[0]._idx));
+
+  forcedBins.forEach(bin => {
+    const seedUsed = bin.packed[0].dim;
+    const extras = _packPiecesIntoBin(remaining, bin.available - seedUsed);
+    if (extras.length) {
+      _removePacked(remaining, extras.map(pc => pc._idx));
+      bin.packed.push(...extras);
+    }
+
+    const usedLen = bin.packed.reduce((sum, pc) => sum + pc.dim, 0);
+    const scrap = bin.scrap;
+    usedScraps.push(scrap.id);
+    plans.push({
+      type: 'scrap',
+      srcId: scrap.id,
+      srcAddr: scrap.endereco || '',
+      len: Number(scrap.medida),
+      usable: bin.available,
+      sku,
+      pcs: bin.packed.map(_toPlanPiece),
+      rem: bin.available - usedLen
+    });
+    console.log(`[OTIM] Uso forçado do retalho ${scrap.id} do setor ${scrap.endereco || '—'}`);
+  });
 }
 
 /* ── Remove peças empacotadas da lista de pendentes ── */
@@ -538,7 +610,7 @@ function _getBiggestBar(sObj) {
 /* ── Fase 3: Refinamento — tentar consolidar bins ──
      Verifica se peças de bins com baixa utilização podem ser
      realocadas em outros bins com espaço sobrando. */
-function _refinePlans(plans, cfgTrim) {
+function _refinePlans(plans, cfgTrim, preserveScrapBins = false) {
   let improved = true;
   let maxPasses = 5;
 
@@ -556,6 +628,7 @@ function _refinePlans(plans, cfgTrim) {
     for (let i = 0; i < binsByUtil.length; i++) {
       const sourceBin = plans[binsByUtil[i].idx];
       if (!sourceBin || sourceBin.pcs.length === 0) continue;
+      if (preserveScrapBins && sourceBin.type === 'scrap') continue;
 
       // Tentar realocar TODAS as peças deste bin para outros bins
       const sourcePcs = [...sourceBin.pcs];
@@ -634,8 +707,8 @@ function _validatePlanPieceCounts(plans, expectedPieces) {
 /* ============================================================
    RENDER RESULTADOS
    ============================================================ */
-function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
-  window._lastOtimResult = { plans, loteId, usedScraps };
+function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy = OTIM_STRATEGY_CURRENT) {
+  window._lastOtimResult = { plans, loteId, usedScraps, strategy };
   const area = document.getElementById('otimResults');
 
   // Calcular estatísticas
@@ -664,6 +737,9 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
   
   const totalUseful = totalUsedLen + totalSobraUtil;
   const eff = totalBarLen > 0 ? ((totalUseful / totalBarLen) * 100).toFixed(2) : '0.00';
+  const strategyLabel = strategy === OTIM_STRATEGY_FORCE_SCRAPS
+    ? 'Forçar utilização das sobras'
+    : 'Melhor aproveitamento';
 
   // Agrupar planos por SKU para visualização
   const skuOrder = [];
@@ -703,7 +779,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen) {
 
     <!-- Actions -->
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-400);">Mapa de Corte · ${plans.length} barra(s) · ${skuOrder.length} SKU(s)</span>
+      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-400);">Mapa de Corte · ${plans.length} barra(s) · ${skuOrder.length} SKU(s) · Estratégia: ${strategyLabel}</span>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-white btn-sm" onclick="renderOtimizador()">Reiniciar</button>
         <button class="btn btn-dark" id="btnFinalizar" onclick="_finalizarOtimizacao()">Finalizar e Aprovar →</button>
@@ -827,7 +903,7 @@ function _renderBarCard(p, idx, cfgTrim) {
 async function _finalizarOtimizacao() {
   const res = window._lastOtimResult;
   if (!res) return;
-  const { plans, loteId, usedScraps } = res;
+  const { plans, loteId, usedScraps, strategy = OTIM_STRATEGY_CURRENT } = res;
 
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
@@ -926,6 +1002,7 @@ async function _finalizarOtimizacao() {
      trim_mm: cfgTrimFinal,
      approvedAt: finalizedAt,
      approvedBy: approver,
+     estrategia: strategy,
      skuPlanIds,
      sobrasUtilizadas: sobrasConsumidas.map(s => ({
        id: s.id || '',
@@ -971,7 +1048,7 @@ async function _finalizarOtimizacao() {
       throw err;
     }
   }
-  await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name}`);
+  await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name} · Estratégia: ${strategy}`);
   
   showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');
   updateBadges();

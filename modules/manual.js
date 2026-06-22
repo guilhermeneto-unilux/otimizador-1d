@@ -87,6 +87,7 @@ function renderManual() {
         <ol style="font-size:14px; color:var(--text-700); line-height:1.8; margin:0; padding-left:20px;">
           <li>Acesse <strong>Otimizador</strong>.</li>
           <li>No campo <strong>Lote Selecionado</strong>, escolha o lote que será calculado.</li>
+          <li>Escolha a estratégia: <strong>Melhor aproveitamento</strong> mantém a lógica atual; <strong>Forçar utilização das sobras</strong> prioriza o maior número possível de retalhos compatíveis, mesmo com aproveitamento menor.</li>
           <li>Clique em <strong>Calcular Otimização</strong>.</li>
           <li>O sistema separa as peças por SKU, ordena as maiores primeiro e tenta encaixar os cortes com o melhor aproveitamento possível.</li>
           <li>O otimizador prioriza retalhos cadastrados no WMS quando eles são compatíveis com o SKU e a medida necessária.</li>

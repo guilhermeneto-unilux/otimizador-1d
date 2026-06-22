@@ -598,6 +598,54 @@ function _renderUnallocated() {
   `;
 }
 
+function _renderSobraSkuOptions() {
+  return (appState.skus || []).map(sk => {
+    const code = String(sk.code || '');
+    const desc = String(sk.desc || '');
+    const search = [`${code} - ${desc}`, code, desc, sk.short_desc || ''].filter(Boolean).join(' ');
+    return `
+      <div class="sku-option"
+           data-sku-code="${_uiEscAttr(code)}"
+           data-sku-desc="${_uiEscAttr(desc)}"
+           data-sku-search="${_uiEscAttr(search)}"
+           style="padding:10px 12px; border-bottom:1px solid #f3f4f6; cursor:pointer;"
+           onclick="_selectSkuFromOption(this)">
+        <strong>${_uiEsc(code)}</strong><br>
+        <span style="color:#6b7280; font-size:12px;">${_uiEsc(desc)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function _renderSobraSkuPicker(value = '', large = false) {
+  const inputStyle = large ? 'font-size:16px; padding:12px;' : '';
+  const maxHeight = large ? 250 : 220;
+  return `
+    <div style="position:relative; text-align:left;">
+      <input type="text" class="form-control" id="soSkuInput"
+             value="${_uiEscAttr(value)}"
+             placeholder="Digite o código ou nome do item..." autocomplete="off"
+             style="${inputStyle}"
+             oninput="_filterSkuDropdown(this.value)"
+             onfocus="_showSkuDropdown(this)"
+             onkeydown="_handleSkuKeydown(event, this)">
+      <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:${maxHeight}px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); text-align:left;">
+        <div id="skuNoResults" style="padding:12px; color:var(--text-400); display:none; font-size:13px;">Nenhum item encontrado...</div>
+        ${_renderSobraSkuOptions()}
+      </div>
+    </div>
+    <div class="form-hint">Use <b>*</b> como coringa. Ex.: <b>base*</b> ou <b>base*shadow*</b>.</div>
+  `;
+}
+
+function _findSobraSkuFromInput(value) {
+  const raw = String(value || '').trim();
+  const separatorIndex = raw.indexOf(' - ');
+  const candidate = separatorIndex >= 0 ? raw.slice(0, separatorIndex).trim() : raw;
+  const normalizedCandidate = _normalizeStr(candidate);
+  return (appState.skus || []).find(sk => _normalizeStr(sk.code) === normalizedCandidate) || null;
+}
+
 function _clickWmsSlot(endereco, isOccupied) {
   if (isOccupied) {
     const s = appState.sobras.find(x => x.endereco === endereco);
@@ -614,6 +662,7 @@ function _clickWmsSlot(endereco, isOccupied) {
       `,
       `
         <div><button class="btn btn-white" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button></div>
+        <button class="btn btn-white" onclick="_editarSobra('${s.id}')">Editar</button>
         <button class="btn btn-white" onclick="closeModal()">Fechar</button>
       `
     );
@@ -636,16 +685,7 @@ function _clickWmsSlot(endereco, isOccupied) {
         </div>
         <div class="form-group">
              <label class="form-label">SKU (Pesquise por código ou nome)</label>
-             <div style="position:relative;">
-               <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off"
-                      oninput="_filterSkuDropdown(this.value)"
-                      onfocus="_showSkuDropdown(this)"
-                      onkeydown="_handleSkuKeydown(event, this)">
-               <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:220px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); text-align:left;">
-                 <div id="skuNoResults" style="padding:12px; color:var(--text-400); display:none; font-size:13px;">Nenhum item encontrado...</div>
-                 ${appState.skus.map(sk => `<div class="sku-option" style="padding:10px 12px; border-bottom:1px solid #f3f4f6; cursor:pointer;" onclick="_selectSku('${sk.code}', '${sk.desc.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><strong>${sk.code}</strong><br><span style="color:#6b7280; font-size:12px;">${sk.desc}</span></div>`).join('')}
-               </div>
-             </div>
+             ${_renderSobraSkuPicker()}
         </div>
         <div class="form-group">
              <label class="form-label">Medida (m)</label>
@@ -663,6 +703,100 @@ function _clickWmsSlot(endereco, isOccupied) {
     hidden.id = 'soEndTarget';
     hidden.value = endereco;
     document.getElementById('modalBody').appendChild(hidden);
+  }
+}
+
+function _editarSobra(id) {
+  const s = appState.sobras.find(x => x.id === id);
+  if (!s) {
+    showToast('Sobra não encontrada.', 'error');
+    return;
+  }
+
+  const skuObj = appState.skus.find(sk => sk.code === s.sku);
+  const skuValue = skuObj ? `${skuObj.code} - ${skuObj.desc || ''}` : s.sku;
+  const measureM = (Number(s.medida) / 1000).toFixed(3);
+
+  openModal(
+    `Editar Retalho: ${s.endereco || s.id}`,
+    `
+      <div class="form-group">
+        <label class="form-label">Endereço (Gaveta/Posição)</label>
+        <input type="text" class="form-control" value="${_uiEscAttr(s.endereco || 'Sem endereço')}" disabled>
+        <div class="form-hint">A localização e a origem do retalho não serão alteradas.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">SKU (Pesquise por código ou nome)</label>
+        ${_renderSobraSkuPicker(skuValue)}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Medida (m)</label>
+        <input type="number" min="0.001" step="0.001" class="form-control" id="soMed" value="${measureM}">
+      </div>
+    `,
+    `
+      <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-green" onclick="_salvarEdicaoSobra('${_uiEscAttr(s.id)}', this)">Salvar Alterações</button>
+    `
+  );
+}
+
+async function _salvarEdicaoSobra(id, btnEl) {
+  const current = appState.sobras.find(x => x.id === id);
+  const skuInput = document.getElementById('soSkuInput');
+  const measureInput = document.getElementById('soMed');
+
+  if (!current || !skuInput || !measureInput) {
+    showToast('Não foi possível carregar os dados da sobra.', 'error');
+    return;
+  }
+
+  const skuObj = _findSobraSkuFromInput(skuInput.value);
+  const medida = Math.round(Number(String(measureInput.value).replace(',', '.')) * 1000);
+
+  if (!skuObj) {
+    showToast('SKU não reconhecido. Selecione uma opção das sugestões.', 'error');
+    return;
+  }
+  if (!Number.isFinite(medida) || medida <= 0) {
+    showToast('Informe uma medida válida.', 'error');
+    return;
+  }
+
+  if (skuObj.code === current.sku && medida === Number(current.medida)) {
+    showToast('Nenhuma alteração foi realizada.', 'info');
+    closeModal();
+    return;
+  }
+
+  if (btnEl) {
+    btnEl.dataset.originalText = btnEl.textContent;
+    btnEl.disabled = true;
+    btnEl.textContent = 'Salvando...';
+  }
+
+  const previous = { sku: current.sku, medida: Number(current.medida) || 0 };
+  const updated = { ...current, sku: skuObj.code, medida };
+
+  try {
+    await DB.saveSobra(updated);
+    Object.assign(current, updated);
+    await DB.log(
+      'Editou Sobra',
+      'unilux_sobras',
+      `${current.id} em ${current.endereco || 'sem endereço'}: ${previous.sku}/${fmtM(previous.medida)} -> ${updated.sku}/${fmtM(updated.medida)}`
+    );
+    closeModal();
+    showToast('Sobra atualizada com sucesso!', 'success');
+    renderSobras();
+    updateBadges();
+  } catch (err) {
+    console.error('Erro ao editar sobra:', err);
+    showToast('Erro ao salvar a edição. Verifique sua conexão.', 'error');
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.textContent = btnEl.dataset.originalText || 'Salvar Alterações';
+    }
   }
 }
 
@@ -691,7 +825,6 @@ async function _salvarSobra(btnEl) {
   }
 
   const skuVal = elSkuInput.value.trim();
-  const skuPart = skuVal.includes(' - ') ? skuVal.split(' - ')[0].trim() : skuVal;
 
   // Converte Metros (input) para Milímetros (DB)
   const med = Math.round(parseFloat(elMed.value.replace(',', '.')) * 1000);
@@ -703,8 +836,8 @@ async function _salvarSobra(btnEl) {
     return;
   }
 
-  // Busca o SKU oficial no appState.skus por código exato ou por match de "CODE - DESC"
-  const skuObj = appState.skus.find(s => s.code === skuPart || `${s.code} - ${s.desc}` === skuVal);
+  // Busca o SKU oficial pelo código selecionado na lista de sugestões.
+  const skuObj = _findSobraSkuFromInput(skuVal);
 
   if (!skuObj) {
     showToast('SKU não reconhecido. Selecione uma opção das sugestões.', 'error');
@@ -944,16 +1077,7 @@ function _avancarCadastroSobra(quadId) {
       <div class="form-row">
          <div class="form-group">
            <label class="form-label" style="font-weight:700;">Perfil da Sobra (Pesquise)</label>
-           <div style="position:relative; text-align:left;">
-             <input type="text" class="form-control" id="soSkuInput" placeholder="🔍 Digite código ou nome..." autocomplete="off" style="font-size:16px; padding:12px;"
-                    oninput="_filterSkuDropdown(this.value)"
-                    onfocus="_showSkuDropdown(this)"
-                    onkeydown="_handleSkuKeydown(event, this)">
-             <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:250px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
-               <div id="skuNoResults" style="padding:12px; color:var(--text-400); display:none; font-size:13px;">Nenhum item encontrado...</div>
-               ${appState.skus.map(sk => `<div class="sku-option" style="padding:12px; border-bottom:1px solid #f3f4f6; cursor:pointer;" onclick="_selectSku('${sk.code}', '${sk.desc.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><strong>${sk.code}</strong><br><span style="color:#6b7280; font-size:13px;">${sk.desc}</span></div>`).join('')}
-             </div>
-           </div>
+           ${_renderSobraSkuPicker('', true)}
          </div>
           <div class="form-group">
            <label class="form-label" style="font-weight:700;">Tamanho (m)</label>
@@ -1031,13 +1155,18 @@ function _imprimirQrCodes() {
 
 /* ====== CUSTOM SKU DROPDOWN LOGIC ====== */
 function _filterSkuDropdown(val) {
-  const q = _normalizeStr(val);
+  const q = _normalizeStr(val).trim();
   const opts = document.querySelectorAll('#soSkuDropdown .sku-option');
   let found = false;
 
   opts.forEach(opt => {
-    const txt = _normalizeStr(opt.textContent);
-    if(txt.includes(q)) {
+    const fields = [
+      opt.dataset.skuCode,
+      opt.dataset.skuDesc,
+      opt.dataset.skuSearch,
+      opt.textContent
+    ].map(_normalizeStr);
+    if (fields.some(field => _matchesSkuSearch(field, q))) {
       opt.style.display = 'block';
       found = true;
     } else {
@@ -1049,9 +1178,21 @@ function _filterSkuDropdown(val) {
   if(noRes) noRes.style.display = (found || q === '') ? 'none' : 'block';
 }
 
+function _matchesSkuSearch(text, normalizedQuery) {
+  const query = String(normalizedQuery || '');
+  if (!query) return true;
+  if (!query.includes('*')) return String(text || '').includes(query);
+
+  const pattern = query
+    .split('*')
+    .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  return new RegExp(`^${pattern}$`).test(String(text || ''));
+}
+
 function _normalizeStr(str) {
   if (!str) return '';
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function _showSkuDropdown(inp) {
@@ -1086,6 +1227,11 @@ function _selectSku(code, desc) {
   }
   const dd = document.getElementById('soSkuDropdown');
   if (dd) dd.style.display = 'none';
+}
+
+function _selectSkuFromOption(option) {
+  if (!option) return;
+  _selectSku(option.dataset.skuCode || '', option.dataset.skuDesc || '');
 }
 
 document.addEventListener('click', function(e) {
