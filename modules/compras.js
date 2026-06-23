@@ -807,12 +807,19 @@ function _openComprasSkuConfigModal(sku) {
 async function _saveComprasSkuConfig(sku) {
   _ensureComprasState();
   const cfg = _normalizeComprasConfig(appState.comprasConfig);
+  const current = cfg.skus[sku] && typeof cfg.skus[sku] === 'object' ? cfg.skus[sku] : {};
+  const pricePerMeter = Math.max(0, _comprasNumber(document.getElementById('cmpPrice').value, 0));
   cfg.skus[sku] = {
+    ...current,
     supplier: document.getElementById('cmpSupplier').value.trim(),
     leadTimeDays: Math.max(0, _comprasInt(document.getElementById('cmpLead').value, cfg.global.defaultLeadTimeDays)),
     safetyDays: Math.max(0, _comprasInt(document.getElementById('cmpSafety').value, cfg.global.defaultSafetyDays)),
     minOrderBars: Math.max(1, _comprasInt(document.getElementById('cmpMinOrder').value, cfg.global.defaultMinOrderBars)),
-    pricePerMeter: Math.max(0, _comprasNumber(document.getElementById('cmpPrice').value, 0)),
+    pricePerMeter,
+    priceSource: {
+      method: 'configuracao-compras-manual',
+      updatedAt: new Date().toISOString()
+    },
     preferredBarLength: _comprasMetersToMm(document.getElementById('cmpPreferredLen').value, 0),
     incomingBars: Math.max(0, _comprasInt(document.getElementById('cmpIncomingBars').value, 0)),
     incomingBarLength: _comprasMetersToMm(document.getElementById('cmpIncomingLen').value, cfg.global.defaultBarLength),

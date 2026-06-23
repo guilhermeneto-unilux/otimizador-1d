@@ -980,6 +980,7 @@ function _otimPlanMetrics(plans, cfgTrim) {
   const globalWaste = totalRefugo + totalRefile;
   const totalUseful = totalUsedLen + totalSobraUtil;
   const efficiencyValue = totalBarLen > 0 ? totalUseful / totalBarLen : 0;
+  const financials = _calculatePlanFinancials(safePlans, cfgTrim);
 
   return {
     totalUsedLen,
@@ -991,7 +992,8 @@ function _otimPlanMetrics(plans, cfgTrim) {
     virginBars: safePlans.filter(plan => plan.type === 'virgin').length,
     scrapBars: safePlans.filter(plan => plan.type === 'scrap').length,
     efficiencyValue,
-    efficiency: (efficiencyValue * 100).toFixed(2)
+    efficiency: (efficiencyValue * 100).toFixed(2),
+    financials
   };
 }
 
@@ -1126,7 +1128,10 @@ function _renderOtimAlternativeCard(alternative, selectedStrategy) {
         <div><span>Barras inteiras</span><b>${metrics.virginBars}</b></div>
         <div><span>Retalhos usados</span><b>${metrics.scrapBars}</b></div>
         <div><span>Desperdício</span><b>${fmtM(metrics.globalWaste)}</b></div>
+        <div><span>Valor em peças</span><b>${fmtBRL(metrics.financials.piecesValue)}</b></div>
+        <div><span>Valor descartado</span><b>${metrics.financials.unpricedSkuCount ? `${fmtBRL(metrics.financials.discardValue)}*` : fmtBRL(metrics.financials.discardValue)}</b></div>
       </div>
+      ${metrics.financials.unpricedSkuCount ? `<div class="otim-compare-price-warning">* Total parcial: ${metrics.financials.unpricedSkuCount} SKU(s) sem preço por metro.</div>` : ''}
       <button class="btn ${isSelected ? 'btn-dark' : 'btn-white'} btn-sm" style="width:100%; justify-content:center;" onclick="_showOtimAlternative('${strategy}')" ${isSelected ? 'disabled' : ''}>
         ${isSelected ? 'Este mapa está sendo avaliado' : 'Ver mapa e avaliar'}
       </button>
@@ -1138,7 +1143,7 @@ function _renderOtimAlternativeCard(alternative, selectedStrategy) {
    RENDER RESULTADOS
    ============================================================ */
 function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy = OTIM_STRATEGY_CURRENT, solver = null) {
-  window._lastOtimResult = { plans, loteId, usedScraps, strategy, solver };
+  window._lastOtimResult = { plans, loteId, usedScraps, cfgTrim, strategy, solver };
   const area = document.getElementById('otimResults');
 
   const metrics = _otimPlanMetrics(plans, cfgTrim);
@@ -1183,6 +1188,10 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy 
       <div class="stat-box" style="border-top:3px solid var(--red);">
         <div class="stat-lbl">Desperdício</div>
         <div class="stat-val red">${fmtM(globalWaste)}</div>
+      </div>
+      <div class="stat-box" style="border-top:3px solid var(--orange);">
+        <div class="stat-lbl">Valor Descartado</div>
+        <div class="stat-val orange">${fmtBRL(metrics.financials.discardValue)}${metrics.financials.unpricedSkuCount ? '<span title="Há SKU sem preço cadastrado"> *</span>' : ''}</div>
       </div>
     </div>
 
@@ -1281,6 +1290,10 @@ function _renderBarCard(p, idx, cfgTrim) {
 
   const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
   const addrText = p.srcAddr ? ` (Endereço: ${p.srcAddr})` : ' (Sem endereço)';
+  const barFinancials = _calculatePlanFinancials([p], cfgTrim);
+  const discardValueText = barFinancials.unpricedSkuCount
+    ? 'Valor do descarte: preço pendente'
+    : `Valor do descarte: ${fmtBRL(barFinancials.discardValue)}`;
 
   return `
     <div class="bar-result-card" style="${geraSobra ? 'border-left:3px solid #22c55e; background:linear-gradient(90deg, #f0fdf4 0%, #fff 30%);' : ''}">
@@ -1302,6 +1315,7 @@ function _renderBarCard(p, idx, cfgTrim) {
               ? `🗑 Descarte: ${fmtM(p.rem)}` 
               : '✓ Zero desperdício'}
         </span>
+        <span style="font-weight:700; color:var(--text-700);">${discardValueText}</span>
       </div>
     </div>`;
 }
@@ -1312,7 +1326,7 @@ function _renderBarCard(p, idx, cfgTrim) {
 async function _finalizarOtimizacao() {
   const res = window._lastOtimResult;
   if (!res) return;
-  const { plans, loteId, usedScraps, strategy = OTIM_STRATEGY_CURRENT, solver = null } = res;
+  const { plans, loteId, usedScraps, cfgTrim = null, strategy = OTIM_STRATEGY_CURRENT, solver = null } = res;
 
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
@@ -1400,9 +1414,11 @@ async function _finalizarOtimizacao() {
   // Salvar o contador atualizado
   DB.saveConfig(appState.configs);
 
-  const cfgTrimFinal = appState.configs ? (appState.configs.trim_mm || 0) : 0;
+  const cfgTrimFinal = cfgTrim !== null ? Number(cfgTrim) || 0 : (appState.configs ? (appState.configs.trim_mm || 0) : 0);
   const finalizedAt = new Date().toISOString();
   const approver = _approvalUserSnapshot();
+  const priceSnapshot = _capturePriceSnapshot(plans.map(plan => plan.sku));
+  const financials = _calculatePlanFinancials(plans, cfgTrimFinal, priceSnapshot);
   const planoFinal = {
      id: `PL-${Date.now()}`,
      loteId,
@@ -1419,6 +1435,8 @@ async function _finalizarOtimizacao() {
        elapsedMs: Number(solver.elapsedMs) || 0
      } : null,
      skuPlanIds,
+     priceSnapshot,
+     financials,
      sobrasUtilizadas: sobrasConsumidas.map(s => ({
        id: s.id || '',
        sku: s.sku || '',
@@ -1435,7 +1453,9 @@ async function _finalizarOtimizacao() {
     aproveitamento: aprov + '%',
     barras_usadas: barrasUsadas,
     sobras_geradas: sobrasGeradas,
-    desperdicio_total: (totalLen - totalUsed).toString(),
+    desperdicio_total: financials.discardMm.toString(),
+    valor_pecas: financials.piecesValue,
+    valor_descarte: financials.discardValue,
     detalhes_plano: plans
   };
   
@@ -1466,7 +1486,7 @@ async function _finalizarOtimizacao() {
   await DB.log(
     "Finalizou Otimização",
     "unilux_historico",
-    `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name} · Estratégia: ${strategy}${solver ? ` · Ótimo comprovado: ${solver.optimal ? 'sim' : 'não'} · Estados: ${Number(solver.explored) || 0}` : ''}`
+    `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name} · Estratégia: ${strategy} · Descarte: ${fmtBRL(financials.discardValue)}${solver ? ` · Ótimo comprovado: ${solver.optimal ? 'sim' : 'não'} · Estados: ${Number(solver.explored) || 0}` : ''}`
   );
   
   showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');

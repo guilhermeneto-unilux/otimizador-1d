@@ -11,6 +11,8 @@ function renderDashboard() {
   const today = new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
 
   const analytics = _buildDashboardAnalytics(filters);
+  const inventoryFinancials = _currentInventoryFinancials(filters.sku);
+  const planFinancials = _aggregatePlanFinancials(analytics.plans, filters.sku);
   const skuOptions = _dashboardSkuOptions();
   const selectedSkuLabel = filters.sku ? filters.sku : 'Todos os SKUs';
 
@@ -48,6 +50,40 @@ function renderDashboard() {
       <div class="kpi-card kpi-purple">
         <div class="kpi-num">${sobras}</div>
         <div class="kpi-label">Sobras Disponíveis</div>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-end; margin:2px 0 10px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:15px; font-weight:700; color:var(--text-900);">Indicadores Financeiros</div>
+        <div style="font-size:12px; color:var(--text-400); margin-top:2px;">Estoque na posição atual · consumo e descarte no período selecionado.</div>
+      </div>
+      ${(inventoryFinancials.unpricedSkuCount || planFinancials.unpricedSkuCount) ? `
+        <span class="status-badge badge-pending" title="Os valores abaixo somam apenas SKUs com preço por metro cadastrado.">
+          ${Math.max(inventoryFinancials.unpricedSkuCount, planFinancials.unpricedSkuCount)} SKU(s) com preço pendente
+        </span>
+      ` : '<span class="status-badge badge-approved">Cobertura de preços completa</span>'}
+    </div>
+    <div class="kpi-grid dashboard-financial-kpis">
+      <div class="kpi-card kpi-green">
+        <div class="kpi-num">${fmtBRLCompact(inventoryFinancials.virginValue)}</div>
+        <div class="kpi-label">Valor em Estoque Virgem</div>
+        <div class="kpi-finance-note">${fmtM(inventoryFinancials.virginMm)} na posição atual</div>
+      </div>
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-num">${fmtBRLCompact(inventoryFinancials.scrapValue)}</div>
+        <div class="kpi-label">Valor em Sobras</div>
+        <div class="kpi-finance-note">${fmtM(inventoryFinancials.scrapMm)} disponíveis</div>
+      </div>
+      <div class="kpi-card kpi-blue">
+        <div class="kpi-num">${fmtBRLCompact(planFinancials.piecesValue)}</div>
+        <div class="kpi-label">Valor Utilizado em Peças</div>
+        <div class="kpi-finance-note">${fmtM(planFinancials.piecesMm)} no período</div>
+      </div>
+      <div class="kpi-card kpi-orange">
+        <div class="kpi-num">${fmtBRLCompact(planFinancials.discardValue)}</div>
+        <div class="kpi-label">Valor Descartado</div>
+        <div class="kpi-finance-note">${fmtM(planFinancials.discardMm)} entre refugo e refile</div>
       </div>
     </div>
 

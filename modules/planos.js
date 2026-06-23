@@ -35,6 +35,7 @@ function renderPlanos() {
                 <th>Lote Origem</th>
                 <th>Aproveitamento</th>
                 <th>Barras</th>
+                <th>Valor Descartado</th>
                 <th>Data Finalização</th>
                 <th>Aprovado por</th>
                 <th>Status</th>
@@ -42,7 +43,7 @@ function renderPlanos() {
               </tr>
             </thead>
             <tbody>
-              ${planos.length ? _planosFinalizadosRows(planos, q) : '<tr><td colspan="8" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
+              ${planos.length ? _planosFinalizadosRows(planos, q) : '<tr><td colspan="9" class="tbl-empty">Nenhum plano finalizado ainda.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -77,6 +78,7 @@ function _planosFinalizadosRows(planos, q = '') {
   return planos.slice().sort((a,b) => new Date(b.data) - new Date(a.data)).map(p => {
     const barras = p.mapa ? p.mapa.length : 0;
     const approval = _planoApprovalInfo(p);
+    const financials = _financialsForStoredPlan(p);
     const searchText = _planoSearchHaystack(p);
     const visible = _planoMatchesSearch(p, q);
     return `
@@ -85,6 +87,7 @@ function _planosFinalizadosRows(planos, q = '') {
       <td style="color:var(--text-400);">${p.loteId}</td>
       <td><span class="status-badge badge-approved">${p.aproveitamento}</span></td>
       <td>${barras} barra(s)</td>
+      <td><div class="fw-700" style="color:var(--red);" ${financials.unpricedSkuCount ? `title="Total parcial: ${financials.unpricedSkuCount} SKU(s) sem preço"` : ''}>${fmtBRL(financials.discardValue)}${financials.unpricedSkuCount ? ' *' : ''}</div></td>
       <td style="color:var(--text-400);">${new Date(p.data).toLocaleString('pt-BR')}</td>
       <td>
         <div class="fw-700">${_planosEsc(approval.name)}</div>
@@ -412,6 +415,8 @@ function _verPlanoMapa(planoId) {
   const solverStatus = plano.solver
     ? (plano.solver.optimal ? 'Ótimo comprovado' : 'Melhor encontrado no limite')
     : '';
+  const planFinancials = _financialsForStoredPlan(plano);
+  const hasHistoricalSnapshot = !!(plano.priceSnapshot || plano.price_snapshot);
 
   // Resumo de Barras Virgens
   const virginSkuCounts = {};
@@ -436,7 +441,7 @@ function _verPlanoMapa(planoId) {
 
   const html = `
     <div class="plano-map">
-      <div class="plano-map-summary-grid">
+      <div class="plano-map-summary-grid plano-map-summary-grid--financial">
         <div class="plano-map-summary-card">
           <div class="plano-map-section-title">📦 Matéria-Prima (Barras Inteiras)</div>
           ${virginSummaryHtml || '<div class="plano-map-empty">Nenhuma barra virgem usada neste lote.</div>'}
@@ -445,6 +450,16 @@ function _verPlanoMapa(planoId) {
         <div class="plano-map-summary-card plano-map-summary-card--scrap">
           <div class="plano-map-section-title">♻️ Retalhos Reutilizados (Abastecimento)</div>
           ${scrapSummaryHtml || '<div class="plano-map-empty">Nenhum retalho reutilizado neste lote.</div>'}
+        </div>
+
+        <div class="plano-map-summary-card plano-map-summary-card--financial">
+          <div class="plano-map-section-title">💰 Valores do Plano</div>
+          <div class="plano-map-summary-line">Peças: <b>${fmtBRL(planFinancials.piecesValue)}</b></div>
+          <div class="plano-map-summary-line">Sobras geradas: <b>${fmtBRL(planFinancials.generatedScrapValue)}</b></div>
+          <div class="plano-map-summary-line plano-map-summary-line--discard">Descarte: <b>${fmtBRL(planFinancials.discardValue)}${planFinancials.unpricedSkuCount ? ' *' : ''}</b></div>
+          <div class="plano-map-finance-note">${planFinancials.unpricedSkuCount
+            ? `Total parcial: ${planFinancials.unpricedSkuCount} SKU(s) sem preço por metro.`
+            : hasHistoricalSnapshot ? 'Preços congelados na aprovação.' : 'Plano antigo: estimativa com os preços atuais.'}</div>
         </div>
       </div>
 
@@ -457,7 +472,7 @@ function _verPlanoMapa(planoId) {
           const c = {};
           return plano.mapa.map((bin, binIdx) => {
             if (c[bin.sku] === undefined) c[bin.sku] = 0;
-            return _renderBarResult(bin, c[bin.sku]++, plano.id, binIdx, activeSearch);
+            return _renderBarResult(bin, c[bin.sku]++, plano.id, binIdx, activeSearch, plano);
           }).join('');
         })()}
       </div>
@@ -486,7 +501,7 @@ function _filtrarPlanos(val) {
   }
 }
 
-function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '') {
+function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '', planContext = null) {
   const totalPcs = bin.pcs.reduce((sum, p) => sum + p.dim, 0);
   const aprov = ((totalPcs/bin.len)*100).toFixed(1);
 
@@ -497,6 +512,11 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '')
   const skuMinSobra = _planoSkuMinSobra(bin.sku);
   const restanteEhSobra = bin.rem >= skuMinSobra;
   const restanteLabel = restanteEhSobra ? 'Sobra' : 'Descarte';
+  const barFinancials = _calculatePlanFinancials(
+    [bin],
+    planContext?.trim_mm || 0,
+    planContext?.priceSnapshot || planContext?.price_snapshot || null
+  );
 
   return `
     <div class="plano-map-bar-card">
@@ -522,6 +542,7 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '')
         <span>Material: <b>${bin.sku}</b></span>
         ${bin.type === 'scrap' && skuShortDesc ? `<span>Nome resumido: <b>${_planosEsc(skuShortDesc)}</b></span>` : ''}
         <span>Peças: <b>${bin.pcs.length}</b></span>
+        <span>Valor descartado: <b>${barFinancials.unpricedSkuCount ? 'Preço pendente' : fmtBRL(barFinancials.discardValue)}</b></span>
       </div>
     </div>
   `;
