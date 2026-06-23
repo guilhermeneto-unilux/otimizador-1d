@@ -59,12 +59,13 @@ function _renderSkusCatalogHtml(options = {}) {
             <th>Nome Resumido</th>
             <th>Dimensões & Lotes (m)</th>
             <th>Total Virgem em Estoque</th>
+            <th>Valor por Metro</th>
             <th>Sobra Mínima</th>
             <th style="text-align:right;">Ações</th>
           </tr>
         </thead>
         <tbody id="skusRowsBody">
-          ${rows.length ? rows : '<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
+          ${rows.length ? rows : '<tr><td colspan="8" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -86,6 +87,9 @@ function _skusRows(list) {
 
     // Calcula o total de barras em estoque desse SKU
     const totalQty = s.dims ? s.dims.reduce((acc, d) => acc + (parseInt(d.qty)||0), 0) : 0;
+    const totalLength = s.dims ? s.dims.reduce((acc, d) => acc + ((parseFloat(d.dim) || 0) * (parseInt(d.qty, 10) || 0)), 0) : 0;
+    const pricePerMeter = skuPricePerMeter(s.code);
+    const stockValue = _priceForLength(s.code, totalLength);
 
     // Lista das dimensões para exibição
     const dimsText = s.dims && s.dims.length > 0
@@ -106,6 +110,12 @@ function _skusRows(list) {
           <div style="font-weight:700; color:${totalQty > 0 ? 'var(--text)' : 'var(--red)'};">
             ${totalQty} barras
           </div>
+          ${totalQty > 0 && pricePerMeter > 0 ? `<div style="font-size:11px; color:var(--text-400); margin-top:2px;">${fmtBRL(stockValue)}</div>` : ''}
+        </td>
+        <td>
+          ${pricePerMeter > 0
+            ? `<div style="font-weight:700; color:var(--text-900);">${fmtBRL(pricePerMeter)}/m</div>`
+            : '<span class="status-badge badge-pending">Preço pendente</span>'}
         </td>
         <td>
           <div style="font-weight:600; color:var(--text-400);">${fmtM(s.min_sobra)}</div>
@@ -129,7 +139,7 @@ function _updateSkusSearch(value) {
   const rows = _skusRows(filteredRows);
 
   const body = document.getElementById('skusRowsBody');
-  if (body) body.innerHTML = rows || '<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>';
+  if (body) body.innerHTML = rows || '<tr><td colspan="8" style="text-align:center; padding:32px; color:var(--text-400);">Nenhum perfil cadastrado.</td></tr>';
 
   const stats = document.getElementById('skusSearchStats');
   if (stats) {
@@ -141,6 +151,7 @@ function _updateSkusSearch(value) {
 function _getSkuFormHtml(sku = null) {
   const code = sku ? sku.code : '';
   const desc = sku ? sku.desc : '';
+  const pricePerMeter = sku ? skuPricePerMeter(sku.code) : 0;
   const dims = sku && Array.isArray(sku.dims) && sku.dims.length
     ? sku.dims
     : [{ dim: '', qty: '' }, { dim: '', qty: '' }, { dim: '', qty: '' }];
@@ -161,6 +172,11 @@ function _getSkuFormHtml(sku = null) {
     <div class="form-group">
       <label class="form-label">Pasta</label>
       <input type="text" class="form-control" id="skFolder" value="${_uiEscAttr(sku && sku.folder ? sku.folder : '')}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Valor do Perfil por Metro (R$/m)</label>
+      <input type="number" min="0" step="0.0001" class="form-control" id="skPricePerMeter" value="${pricePerMeter > 0 ? pricePerMeter : ''}" placeholder="Ex: 9,7300">
+      <div class="form-hint">Este é o valor usado no estoque, nas sobras, no dashboard e nos planos de otimização.</div>
     </div>
     <div class="form-group">
       <label class="form-label">Sobra Mínima para Guarda (m) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
@@ -244,6 +260,7 @@ async function _salvarSku() {
   const desc = document.getElementById('skDesc').value.trim();
   const short_desc = document.getElementById('skShortDesc').value.trim();
   const folder = document.getElementById('skFolder').value.trim();
+  const pricePerMeter = Math.max(0, parseFloat(String(document.getElementById('skPricePerMeter').value || '0').replace(',', '.')) || 0);
   
   // Converte Metros para Milímetros (int)
   const minSobra = Math.round(parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) * 1000) || 1000;
@@ -259,8 +276,10 @@ async function _salvarSku() {
   
   try {
     appState.skus.push(s);
+    _setSkuPricePerMeter(s.code, pricePerMeter, { method: 'catalogo-manual', updatedAt: new Date().toISOString() });
     await DB.saveSku(s);
-    await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
+    await DB.saveComprasConfig();
+    await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc} · ${pricePerMeter > 0 ? `${fmtBRL(pricePerMeter)}/m` : 'preço pendente'}`);
     closeModal(); 
     showToast('Perfil salvo com sucesso!', 'success'); 
     _refreshSkusView();
@@ -296,6 +315,7 @@ async function _saveEditSku(id) {
     s.desc = document.getElementById('skDesc').value.trim();
     s.short_desc = document.getElementById('skShortDesc').value.trim();
     s.folder = document.getElementById('skFolder').value.trim();
+    const pricePerMeter = Math.max(0, parseFloat(String(document.getElementById('skPricePerMeter').value || '0').replace(',', '.')) || 0);
     
     // Converte Metros para Milímetros (int)
     const minSobraRaw = document.getElementById('skMinSobra').value;
@@ -309,7 +329,9 @@ async function _saveEditSku(id) {
     s.code = originalCode;
     
     await DB.saveSku(s);
-    await DB.log("Editou SKU", "unilux_skus", `${s.code} - ${s.desc}`);
+    _setSkuPricePerMeter(s.code, pricePerMeter, { method: 'catalogo-manual', updatedAt: new Date().toISOString() });
+    await DB.saveComprasConfig();
+    await DB.log("Editou SKU", "unilux_skus", `${s.code} - ${s.desc} · ${fmtBRL(pricePerMeter)}/m`);
     
     closeModal(); 
     showToast('Estoque atualizado!', 'success'); 
@@ -321,8 +343,16 @@ async function _saveEditSku(id) {
 }
 
 async function _deleteSku(id) {
+  const sku = appState.skus.find(x => x.id === id);
   appState.skus = appState.skus.filter(x => x.id !== id);
   await DB.deleteSku(id);
+  if (sku && appState.comprasConfig?.skus) {
+    const key = Object.keys(appState.comprasConfig.skus).find(candidate => _pricingCode(candidate) === _pricingCode(sku.code));
+    if (key) {
+      delete appState.comprasConfig.skus[key];
+      await DB.saveComprasConfig();
+    }
+  }
   await DB.log("Removeu SKU", "unilux_skus", id);
   showToast('SKU removido.', 'info'); 
   closeModal(); _refreshSkusView();
