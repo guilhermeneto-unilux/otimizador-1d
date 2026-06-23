@@ -27,24 +27,15 @@ function renderOtimizador() {
               <option value="">— Escolha um lote —</option>
               ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} linha(s) · ${_lotePieceCount(l)} peça(s)</option>`).join('')}
             </select>
-            <div class="form-hint" style="margin-top:8px;">Motor <b>FFD Avançado</b>: agrupa por SKU, usa dimensão de corte real de cada OP, prioriza retalhos (≤ 20% desperdício), empacota múltiplas peças por barra para minimizar matéria-prima. Sobra mínima: <b>conf. por SKU</b>.</div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Estratégia de Otimização</label>
-            <select class="form-control" id="otimStrategy">
-              <option value="${OTIM_STRATEGY_CURRENT}" selected>Melhor aproveitamento (estratégia atual)</option>
-              <option value="${OTIM_STRATEGY_FORCE_SCRAPS}">Forçar utilização das sobras</option>
-            </select>
             <div class="form-hint" style="margin-top:8px;">
-              <b>Melhor aproveitamento</b> mantém exatamente a lógica atual. <b>Forçar utilização</b> usa o máximo possível de sobras compatíveis antes das barras inteiras, mesmo com eficiência menor.
+              O sistema calculará automaticamente <b>Melhor aproveitamento</b> e <b>Forçar utilização das sobras</b> para o PCP comparar antes de aprovar.
             </div>
           </div>
         </div>
 
         <button class="btn btn-green" id="btnCalcOtim" style="width:100%; justify-content:center; padding:12px;" onclick="_startOtimizacao()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Calcular Otimização
+          Calcular e Comparar
         </button>
 
         <div class="params-card" style="margin-top:0;">
@@ -75,7 +66,7 @@ function renderOtimizador() {
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
-          <p>Selecione um lote e clique em "Calcular"</p>
+          <p>Selecione um lote para calcular e comparar as duas estratégias</p>
         </div>
       </section>
     </div>
@@ -112,7 +103,7 @@ function _startOtimizacao() {
   const btn = document.getElementById('btnCalcOtim');
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> Calculando...`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> Calculando as duas estratégias...`;
   }
 
   const area = document.getElementById('otimResults');
@@ -124,7 +115,7 @@ function _startOtimizacao() {
             <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
           </svg>
         </div>
-        <p>Calculando melhor aproveitamento... Por favor, aguarde.</p>
+        <p>Calculando as duas alternativas... Por favor, aguarde.</p>
       </div>
       <style>
         @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -135,7 +126,12 @@ function _startOtimizacao() {
   // Defer computation to allow paint
   setTimeout(() => {
     try {
-      _calcOtimizacao();
+      const currentAlternative = _tryCalcOtimAlternative(OTIM_STRATEGY_CURRENT);
+      const forcedAlternative = _tryCalcOtimAlternative(OTIM_STRATEGY_FORCE_SCRAPS);
+      if (!currentAlternative.result && !forcedAlternative.result) {
+        throw currentAlternative.error || forcedAlternative.error || new Error('OTIMIZACAO_SEM_RESULTADO');
+      }
+      _renderOtimComparison(currentAlternative, forcedAlternative);
     } catch (e) {
       console.error("Optimization error:", e);
       if (e.message === 'LOTE_CORROMPEU') {
@@ -220,15 +216,24 @@ function _startOtimizacao() {
       }
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Calcular Otimização`;
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Calcular e Comparar`;
       }
     }
   }, 100);
 }
 
-function _calcOtimizacao() {
+function _tryCalcOtimAlternative(strategy) {
+  try {
+    return { strategy, result: _calcOtimizacao(strategy), error: null };
+  } catch (error) {
+    console.warn(`[OTIM] Falha na estratégia ${strategy}:`, error);
+    return { strategy, result: null, error };
+  }
+}
+
+function _calcOtimizacao(strategy = OTIM_STRATEGY_CURRENT) {
   const loteId   = document.getElementById('otimLote').value;
-  const strategy = document.getElementById('otimStrategy')?.value === OTIM_STRATEGY_FORCE_SCRAPS
+  strategy = strategy === OTIM_STRATEGY_FORCE_SCRAPS
     ? OTIM_STRATEGY_FORCE_SCRAPS
     : OTIM_STRATEGY_CURRENT;
   const cfgTrim  = appState.configs ? (appState.configs.trim_mm || 0) : 0;
@@ -421,7 +426,14 @@ function _calcOtimizacao() {
   _refinePlans(plans, cfgTrim, strategy === OTIM_STRATEGY_FORCE_SCRAPS);
   _validatePlanPieceCounts(plans, allPieces);
 
-  _renderResultados(plans, loteId, _usedScrapIdsFromPlans(plans), cfgTrim, cfgPen, strategy);
+  return {
+    plans,
+    loteId,
+    usedScraps: _usedScrapIdsFromPlans(plans),
+    cfgTrim,
+    cfgPen,
+    strategy
+  };
 }
 
 function _usedScrapIdsFromPlans(plans) {
@@ -704,6 +716,175 @@ function _validatePlanPieceCounts(plans, expectedPieces) {
   }
 }
 
+function _otimPlanMetrics(plans, cfgTrim) {
+  const safePlans = Array.isArray(plans) ? plans : [];
+  const totalUsedLen = safePlans.reduce((sum, plan) => (
+    sum + (plan.pcs || []).reduce((pieceSum, pc) => pieceSum + Number(pc.dim || 0), 0)
+  ), 0);
+  const totalBarLen = safePlans.reduce((sum, plan) => sum + Number(plan.len || 0), 0);
+
+  let sobrasGeradas = 0;
+  let totalRefugo = 0;
+  let totalSobraUtil = 0;
+
+  safePlans.forEach(plan => {
+    const sObj = appState.skus.find(x => x.code === plan.sku);
+    const skuMin = sObj && sObj.min_sobra !== undefined ? Number(sObj.min_sobra) : 1000;
+    if (Number(plan.rem || 0) >= skuMin) {
+      sobrasGeradas++;
+      totalSobraUtil += Number(plan.rem || 0);
+    } else {
+      totalRefugo += Number(plan.rem || 0);
+    }
+  });
+
+  const totalRefile = safePlans.length * cfgTrim;
+  const globalWaste = totalRefugo + totalRefile;
+  const totalUseful = totalUsedLen + totalSobraUtil;
+
+  return {
+    totalUsedLen,
+    totalBarLen,
+    sobrasGeradas,
+    totalSobraUtil,
+    globalWaste,
+    totalBars: safePlans.length,
+    virginBars: safePlans.filter(plan => plan.type === 'virgin').length,
+    scrapBars: safePlans.filter(plan => plan.type === 'scrap').length,
+    efficiency: totalBarLen > 0 ? ((totalUseful / totalBarLen) * 100).toFixed(2) : '0.00'
+  };
+}
+
+function _otimPlanSignature(plans) {
+  const normalized = (plans || []).map(plan => ({
+    type: plan.type || '',
+    srcId: plan.srcId || '',
+    sku: plan.sku || '',
+    len: Number(plan.len) || 0,
+    rem: Number(plan.rem) || 0,
+    pieces: (plan.pcs || [])
+      .map(pc => pc.pieceId || `${pc.op}|${pc.sku}|${pc.dim}`)
+      .sort()
+  }));
+  normalized.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return JSON.stringify(normalized);
+}
+
+function _otimAlternativesAreEqual(currentAlternative, forcedAlternative) {
+  return !!(
+    currentAlternative?.result
+    && forcedAlternative?.result
+    && _otimPlanSignature(currentAlternative.result.plans) === _otimPlanSignature(forcedAlternative.result.plans)
+  );
+}
+
+function _renderOtimComparison(currentAlternative, forcedAlternative) {
+  window._otimAlternatives = {
+    [OTIM_STRATEGY_CURRENT]: currentAlternative,
+    [OTIM_STRATEGY_FORCE_SCRAPS]: forcedAlternative
+  };
+  window._otimAlternativesEqual = _otimAlternativesAreEqual(currentAlternative, forcedAlternative);
+
+  const initialStrategy = currentAlternative.result
+    ? OTIM_STRATEGY_CURRENT
+    : OTIM_STRATEGY_FORCE_SCRAPS;
+  _showOtimAlternative(initialStrategy);
+}
+
+function _showOtimAlternative(strategy) {
+  const alternatives = window._otimAlternatives || {};
+  const alternative = alternatives[strategy];
+  if (!alternative?.result) {
+    showToast('Esta alternativa não pôde ser calculada.', 'error');
+    return;
+  }
+
+  const result = alternative.result;
+  _renderResultados(
+    result.plans,
+    result.loteId,
+    result.usedScraps,
+    result.cfgTrim,
+    result.cfgPen,
+    result.strategy
+  );
+
+  const area = document.getElementById('otimResults');
+  if (!area) return;
+  const detailHtml = area.innerHTML;
+  area.innerHTML = `${_renderOtimComparisonPanel(strategy)}${detailHtml}`;
+}
+
+function _renderOtimComparisonPanel(selectedStrategy) {
+  const alternatives = window._otimAlternatives || {};
+  const equalNotice = window._otimAlternativesEqual
+    ? `
+      <div class="otim-compare-notice">
+        <b>Os dois cálculos produziram o mesmo mapa neste lote.</b>
+        Isso acontece quando o plano de melhor aproveitamento já utiliza todas as sobras compatíveis. Nesse caso, qualquer escolha terá o mesmo corte.
+      </div>
+    `
+    : '';
+
+  return `
+    <div class="otim-compare">
+      <div class="otim-compare-heading">
+        <div>
+          <div class="params-title">Comparação das estratégias</div>
+          <div class="form-hint">Confira os indicadores e abra cada mapa antes de escolher qual plano será aprovado.</div>
+        </div>
+      </div>
+      ${equalNotice}
+      <div class="otim-compare-grid">
+        ${_renderOtimAlternativeCard(alternatives[OTIM_STRATEGY_CURRENT], selectedStrategy)}
+        ${_renderOtimAlternativeCard(alternatives[OTIM_STRATEGY_FORCE_SCRAPS], selectedStrategy)}
+      </div>
+    </div>
+  `;
+}
+
+function _renderOtimAlternativeCard(alternative, selectedStrategy) {
+  const strategy = alternative?.strategy || OTIM_STRATEGY_CURRENT;
+  const isForced = strategy === OTIM_STRATEGY_FORCE_SCRAPS;
+  const isSelected = selectedStrategy === strategy;
+  const title = isForced ? 'Forçar utilização das sobras' : 'Melhor aproveitamento';
+  const description = isForced
+    ? 'Maximiza o número de retalhos compatíveis utilizados, mesmo com eficiência menor.'
+    : 'Mantém o critério seletivo atual e prioriza o melhor aproveitamento do material.';
+
+  if (!alternative?.result) {
+    const errorMessage = _otimEsc(alternative?.error?.message || 'Não foi possível calcular esta alternativa.');
+    return `
+      <div class="otim-compare-card otim-compare-card--error">
+        <div class="otim-compare-card-title">${title}</div>
+        <div class="otim-compare-card-desc">${description}</div>
+        <div class="otim-compare-error">Alternativa indisponível: ${errorMessage}</div>
+      </div>
+    `;
+  }
+
+  const result = alternative.result;
+  const metrics = _otimPlanMetrics(result.plans, result.cfgTrim);
+  return `
+    <div class="otim-compare-card ${isSelected ? 'otim-compare-card--selected' : ''}">
+      <div class="otim-compare-card-head">
+        <div class="otim-compare-card-title">${title}</div>
+        ${isSelected ? '<span class="status-badge badge-approved">Mapa exibido</span>' : ''}
+      </div>
+      <div class="otim-compare-card-desc">${description}</div>
+      <div class="otim-compare-metrics">
+        <div><span>Aproveitamento</span><b>${metrics.efficiency}%</b></div>
+        <div><span>Barras inteiras</span><b>${metrics.virginBars}</b></div>
+        <div><span>Retalhos usados</span><b>${metrics.scrapBars}</b></div>
+        <div><span>Desperdício</span><b>${fmtM(metrics.globalWaste)}</b></div>
+      </div>
+      <button class="btn ${isSelected ? 'btn-dark' : 'btn-white'} btn-sm" style="width:100%; justify-content:center;" onclick="_showOtimAlternative('${strategy}')" ${isSelected ? 'disabled' : ''}>
+        ${isSelected ? 'Este mapa está sendo avaliado' : 'Ver mapa e avaliar'}
+      </button>
+    </div>
+  `;
+}
+
 /* ============================================================
    RENDER RESULTADOS
    ============================================================ */
@@ -711,32 +892,9 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy 
   window._lastOtimResult = { plans, loteId, usedScraps, strategy };
   const area = document.getElementById('otimResults');
 
-  // Calcular estatísticas
-  const totalUsedLen = plans.reduce((s, p) => {
-    return s + p.pcs.reduce((a, pc) => a + pc.dim, 0);
-  }, 0);
-  const totalBarLen = plans.reduce((s, p) => s + p.len, 0);
-
-  let sobrasGeradas = 0;
-  let totalRefugo = 0;
-  let totalSobraUtil = 0;
-
-  plans.forEach(p => {
-    const sObj = appState.skus.find(x => x.code === p.sku);
-    const skuMin = sObj && sObj.min_sobra !== undefined ? sObj.min_sobra : 1000;
-    if (p.rem >= skuMin) {
-      sobrasGeradas++;
-      totalSobraUtil += p.rem;
-    } else {
-      totalRefugo += p.rem;
-    }
-  });
-
-  const totalRefile = plans.length * cfgTrim;
-  const globalWaste = totalRefugo + totalRefile;
-  
-  const totalUseful = totalUsedLen + totalSobraUtil;
-  const eff = totalBarLen > 0 ? ((totalUseful / totalBarLen) * 100).toFixed(2) : '0.00';
+  const metrics = _otimPlanMetrics(plans, cfgTrim);
+  const { sobrasGeradas, totalSobraUtil, globalWaste } = metrics;
+  const eff = metrics.efficiency;
   const strategyLabel = strategy === OTIM_STRATEGY_FORCE_SCRAPS
     ? 'Forçar utilização das sobras'
     : 'Melhor aproveitamento';
@@ -782,7 +940,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy 
       <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-400);">Mapa de Corte · ${plans.length} barra(s) · ${skuOrder.length} SKU(s) · Estratégia: ${strategyLabel}</span>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-white btn-sm" onclick="renderOtimizador()">Reiniciar</button>
-        <button class="btn btn-dark" id="btnFinalizar" onclick="_finalizarOtimizacao()">Finalizar e Aprovar →</button>
+        <button class="btn btn-dark" id="btnFinalizar" onclick="_finalizarOtimizacao()">Aprovar esta alternativa →</button>
       </div>
     </div>
 

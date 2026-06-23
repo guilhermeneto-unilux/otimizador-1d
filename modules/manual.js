@@ -87,13 +87,13 @@ function renderManual() {
         <ol style="font-size:14px; color:var(--text-700); line-height:1.8; margin:0; padding-left:20px;">
           <li>Acesse <strong>Otimizador</strong>.</li>
           <li>No campo <strong>Lote Selecionado</strong>, escolha o lote que será calculado.</li>
-          <li>Escolha a estratégia: <strong>Melhor aproveitamento</strong> mantém a lógica atual; <strong>Forçar utilização das sobras</strong> prioriza o maior número possível de retalhos compatíveis, mesmo com aproveitamento menor.</li>
-          <li>Clique em <strong>Calcular Otimização</strong>.</li>
+          <li>Clique em <strong>Calcular e Comparar</strong>. O sistema processará automaticamente as estratégias <strong>Melhor aproveitamento</strong> e <strong>Forçar utilização das sobras</strong>.</li>
+          <li>Compare aproveitamento, barras inteiras, retalhos usados e desperdício. Use <strong>Ver mapa e avaliar</strong> para alternar entre os dois resultados.</li>
           <li>O sistema separa as peças por SKU, ordena as maiores primeiro e tenta encaixar os cortes com o melhor aproveitamento possível.</li>
           <li>O otimizador prioriza retalhos cadastrados no WMS quando eles são compatíveis com o SKU e a medida necessária.</li>
           <li>Quando não há retalho adequado, o sistema usa barras virgens cadastradas no SKU e escolhe a alternativa que reduz desperdício.</li>
           <li>Confira visualmente o mapa: peças em barra virgem, peças em retalho reutilizado, sobras geradas, refugo e refile aparecem com cores diferentes.</li>
-          <li>Se o resultado estiver correto, aprove/finalize o plano para ele aparecer em <strong>Planos de Corte</strong>.</li>
+          <li>Depois de escolher a alternativa, clique em <strong>Aprovar esta alternativa</strong> para o plano aparecer em <strong>Planos de Corte</strong>.</li>
         </ol>
         <div style="margin-top:14px; font-size:13px; background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:12px; color:#9a3412;">
           <strong>Atenção:</strong> se uma OP do lote foi excluída depois da criação do lote, o otimizador pode indicar lote inválido. Nesse caso, exclua ou recrie o lote com as ordens corretas.
