@@ -428,7 +428,7 @@ function _verPlanoMapa(planoId) {
   const scrapSummaryHtml = scrapPlans.map(p => {
     const sObj = appState.skus.find(s => s.code === p.sku);
     const name = sObj ? (sObj.short_desc || sObj.desc) : p.sku;
-    return `<div class="plano-map-summary-line">• ${p.sku} (${fmtM(p.len)}): <b>Setor ${p.srcAddr || '—'}</b> <span>(ID: ${p.srcId})</span></div>`;
+    return `<div class="plano-map-summary-line">• ${p.sku} — ${_planosEsc(name)} (${fmtM(p.len)}): <b>Setor ${p.srcAddr || '—'}</b> <span>(ID: ${p.srcId})</span></div>`;
   }).join('');
 
   const html = `
@@ -490,6 +490,7 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '')
   const sObj = appState.skus.find(s => s.code === bin.sku);
   const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
   const addrText = bin.srcAddr ? ` (Endereço: ${bin.srcAddr})` : ' (Sem endereço)';
+  const scrapNameText = bin.type === 'scrap' && skuShortDesc ? ` · ${_planosEsc(skuShortDesc)}` : '';
   const skuMinSobra = _planoSkuMinSobra(bin.sku);
   const restanteEhSobra = bin.rem >= skuMinSobra;
   const restanteLabel = restanteEhSobra ? 'Sobra' : 'Descarte';
@@ -497,7 +498,7 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '')
   return `
     <div class="plano-map-bar-card">
       <div class="plano-map-bar-head">
-        <span class="plano-map-bar-title">Barra #${idx+1} - <span>${fmtM(bin.len)}</span> - ${bin.type === 'scrap' ? `<strong class="plano-map-source-scrap">Retalho ${bin.srcId}${addrText}</strong>` : '<strong class="plano-map-source-virgin">Virgem</strong>'}</span>
+        <span class="plano-map-bar-title">Barra #${idx+1} - <span>${fmtM(bin.len)}</span> - ${bin.type === 'scrap' ? `<strong class="plano-map-source-scrap">Retalho ${bin.srcId}${scrapNameText}${addrText}</strong>` : '<strong class="plano-map-source-virgin">Virgem</strong>'}</span>
         <span class="status-badge badge-approved">${aprov}% usado</span>
       </div>
       <div class="plano-map-track">
@@ -516,6 +517,7 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '')
       </div>
       <div class="plano-map-bar-meta">
         <span>Material: <b>${bin.sku}</b></span>
+        ${bin.type === 'scrap' && skuShortDesc ? `<span>Nome resumido: <b>${_planosEsc(skuShortDesc)}</b></span>` : ''}
         <span>Peças: <b>${bin.pcs.length}</b></span>
       </div>
     </div>
