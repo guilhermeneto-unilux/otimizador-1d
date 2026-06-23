@@ -3,6 +3,9 @@
 const SEG_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#0ea5e9','#6366f1','#06b6d4','#f97316','#ec4899','#818cf8','#a855f7'];
 const OTIM_STRATEGY_CURRENT = 'current';
 const OTIM_STRATEGY_FORCE_SCRAPS = 'force-scraps';
+const OTIM_STRATEGY_GLOBAL = 'global';
+const OTIM_SOLVER_TIMEOUT_MS = 30000;
+const OTIM_SOLVER_WORKER_URL = 'modules/optimization-worker.js?v=1.0';
 
 function renderOtimizador() {
   const lotesDisp = appState.lotes.filter(l => l.status === 'pending' && l.ordens && l.ordens.length > 0);
@@ -28,7 +31,7 @@ function renderOtimizador() {
               ${lotesDisp.map(l => `<option value="${l.id}">${l.id} · ${l.ordens.length} linha(s) · ${_lotePieceCount(l)} peça(s)</option>`).join('')}
             </select>
             <div class="form-hint" style="margin-top:8px;">
-              O sistema calculará automaticamente <b>Melhor aproveitamento</b> e <b>Forçar utilização das sobras</b> para o PCP comparar antes de aprovar.
+              O sistema fará uma <b>busca global</b> e também calculará <b>Forçar utilização das sobras</b> para o PCP comparar antes de aprovar.
             </div>
           </div>
         </div>
@@ -115,7 +118,8 @@ function _startOtimizacao() {
             <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
           </svg>
         </div>
-        <p>Calculando as duas alternativas... Por favor, aguarde.</p>
+        <p id="otimProgressTitle">Preparando as duas alternativas...</p>
+        <div id="otimProgressDetails" style="font-size:11px; color:var(--text-400); text-align:center;">Organizando peças, sobras e barras disponíveis.</div>
       </div>
       <style>
         @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -124,14 +128,20 @@ function _startOtimizacao() {
   }
 
   // Defer computation to allow paint
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
       const currentAlternative = _tryCalcOtimAlternative(OTIM_STRATEGY_CURRENT);
-      const forcedAlternative = _tryCalcOtimAlternative(OTIM_STRATEGY_FORCE_SCRAPS);
-      if (!currentAlternative.result && !forcedAlternative.result) {
-        throw currentAlternative.error || forcedAlternative.error || new Error('OTIMIZACAO_SEM_RESULTADO');
+      const forcedHeuristicAlternative = _tryCalcOtimAlternative(OTIM_STRATEGY_FORCE_SCRAPS);
+      if (!currentAlternative.result && !forcedHeuristicAlternative.result) {
+        throw currentAlternative.error || forcedHeuristicAlternative.error || new Error('OTIMIZACAO_SEM_RESULTADO');
       }
-      _renderOtimComparison(currentAlternative, forcedAlternative);
+      _updateOtimSolverProgress({ phase: 'solver-start' });
+      const alternatives = await _calculateRobustOtimAlternatives(currentAlternative, forcedHeuristicAlternative);
+      _renderOtimComparison(alternatives.global, alternatives.forced);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Recalcular e Comparar`;
+      }
     } catch (e) {
       console.error("Optimization error:", e);
       if (e.message === 'LOTE_CORROMPEU') {
@@ -228,6 +238,234 @@ function _tryCalcOtimAlternative(strategy) {
   } catch (error) {
     console.warn(`[OTIM] Falha na estratégia ${strategy}:`, error);
     return { strategy, result: null, error };
+  }
+}
+
+async function _calculateRobustOtimAlternatives(currentAlternative, forcedHeuristicAlternative) {
+  const heuristicResults = [currentAlternative?.result, forcedHeuristicAlternative?.result].filter(Boolean);
+  const bestHeuristic = heuristicResults.reduce((best, result) => (
+    !best || _compareOtimResultsGlobal(result, best) < 0 ? result : best
+  ), null);
+  const forcedHeuristic = forcedHeuristicAlternative?.result || bestHeuristic;
+
+  if (!bestHeuristic || !forcedHeuristic) {
+    throw new Error('OTIMIZACAO_SEM_RESULTADO');
+  }
+
+  const fallbackSolverInfo = {
+    optimal: false,
+    timedOut: false,
+    fallback: true,
+    explored: 0,
+    elapsedMs: 0,
+    candidateCount: heuristicResults.length,
+    message: 'Busca exata indisponível; exibindo a melhor solução heurística.'
+  };
+
+  if (typeof Worker === 'undefined') {
+    return {
+      global: {
+        strategy: OTIM_STRATEGY_GLOBAL,
+        result: _asOtimStrategyResult(bestHeuristic, OTIM_STRATEGY_GLOBAL, fallbackSolverInfo),
+        error: null
+      },
+      forced: {
+        strategy: OTIM_STRATEGY_FORCE_SCRAPS,
+        result: _asOtimStrategyResult(forcedHeuristic, OTIM_STRATEGY_FORCE_SCRAPS, fallbackSolverInfo),
+        error: null
+      }
+    };
+  }
+
+  const payload = _buildOtimSolverPayload(heuristicResults);
+
+  try {
+    const solverResult = await _runOtimSolverWorker(payload);
+    const solverInfo = {
+      optimal: !!solverResult.optimal,
+      timedOut: !!solverResult.timedOut,
+      fallback: false,
+      explored: Number(solverResult.explored) || 0,
+      elapsedMs: Number(solverResult.elapsedMs) || 0,
+      candidateCount: Number(solverResult.candidateCount) || 0,
+      skuFrontiers: solverResult.skuFrontiers || []
+    };
+
+    const globalResult = _solverCandidateToOtimResult(
+      solverResult.global,
+      bestHeuristic,
+      OTIM_STRATEGY_GLOBAL,
+      solverInfo
+    );
+    const forcedResult = _solverCandidateToOtimResult(
+      solverResult.forced,
+      forcedHeuristic,
+      OTIM_STRATEGY_FORCE_SCRAPS,
+      solverInfo
+    );
+
+    // Guardrail: o plano global nunca pode ficar abaixo de uma alternativa avaliada.
+    const guardedGlobal = _compareOtimResultsGlobal(globalResult, forcedResult) <= 0
+      ? globalResult
+      : _asOtimStrategyResult(forcedResult, OTIM_STRATEGY_GLOBAL, solverInfo);
+
+    return {
+      global: { strategy: OTIM_STRATEGY_GLOBAL, result: guardedGlobal, error: null },
+      forced: { strategy: OTIM_STRATEGY_FORCE_SCRAPS, result: forcedResult, error: null }
+    };
+  } catch (error) {
+    if (String(error?.message || error).includes('SOLVER_SEM_PLANO_VIAVEL')) {
+      throw new Error('SKU_SEM_BARRA: estoque insuficiente para atender todas as peças do lote');
+    }
+    console.warn('[OTIM] Solver exato indisponível; usando alternativas heurísticas.', error);
+    return {
+      global: {
+        strategy: OTIM_STRATEGY_GLOBAL,
+        result: _asOtimStrategyResult(bestHeuristic, OTIM_STRATEGY_GLOBAL, {
+          ...fallbackSolverInfo,
+          message: 'O solver exato falhou; exibindo a melhor solução heurística disponível.'
+        }),
+        error: null
+      },
+      forced: {
+        strategy: OTIM_STRATEGY_FORCE_SCRAPS,
+        result: _asOtimStrategyResult(forcedHeuristic, OTIM_STRATEGY_FORCE_SCRAPS, fallbackSolverInfo),
+        error: null
+      }
+    };
+  }
+}
+
+function _asOtimStrategyResult(result, strategy, solver) {
+  return {
+    ...result,
+    strategy,
+    usedScraps: _usedScrapIdsFromPlans(result.plans),
+    solver
+  };
+}
+
+function _solverCandidateToOtimResult(candidate, baseResult, strategy, solver) {
+  if (!candidate?.plans) return _asOtimStrategyResult(baseResult, strategy, solver);
+  const expectedPieces = (baseResult.plans || []).flatMap(plan => plan.pcs || []);
+  _validatePlanPieceCounts(candidate.plans, expectedPieces);
+  return {
+    plans: candidate.plans,
+    loteId: baseResult.loteId,
+    usedScraps: _usedScrapIdsFromPlans(candidate.plans),
+    cfgTrim: baseResult.cfgTrim,
+    cfgPen: baseResult.cfgPen,
+    strategy,
+    solver
+  };
+}
+
+function _compareOtimResultsGlobal(left, right) {
+  const leftMetrics = _otimPlanMetrics(left?.plans || [], Number(left?.cfgTrim) || 0);
+  const rightMetrics = _otimPlanMetrics(right?.plans || [], Number(right?.cfgTrim) || 0);
+  const efficiencyDiff = rightMetrics.efficiencyValue - leftMetrics.efficiencyValue;
+  if (Math.abs(efficiencyDiff) > 1e-12) return efficiencyDiff;
+  if (leftMetrics.globalWaste !== rightMetrics.globalWaste) return leftMetrics.globalWaste - rightMetrics.globalWaste;
+  if (leftMetrics.virginBars !== rightMetrics.virginBars) return leftMetrics.virginBars - rightMetrics.virginBars;
+  if (leftMetrics.totalBars !== rightMetrics.totalBars) return leftMetrics.totalBars - rightMetrics.totalBars;
+  if (leftMetrics.totalBarLen !== rightMetrics.totalBarLen) return leftMetrics.totalBarLen - rightMetrics.totalBarLen;
+  return rightMetrics.scrapBars - leftMetrics.scrapBars;
+}
+
+function _buildOtimSolverPayload(heuristicResults) {
+  const sourceResult = heuristicResults.find(Boolean);
+  const piecesBySku = new Map();
+
+  (sourceResult?.plans || []).forEach(plan => {
+    if (!piecesBySku.has(plan.sku)) piecesBySku.set(plan.sku, new Map());
+    const skuPieces = piecesBySku.get(plan.sku);
+    (plan.pcs || []).forEach(piece => {
+      const id = piece.pieceId || `${piece.op}|${piece.sku}|${piece.dim}`;
+      if (!skuPieces.has(id)) skuPieces.set(id, { ...piece, sku: plan.sku, dim: Number(piece.dim) || 0 });
+    });
+  });
+
+  const skus = [...piecesBySku.entries()].map(([code, pieceMap]) => {
+    const sObj = appState.skus.find(sku => sku.code === code) || {};
+    return {
+      code,
+      minSobra: Number(sObj.min_sobra) || 1000,
+      pieces: [...pieceMap.values()],
+      scraps: (appState.sobras || [])
+        .filter(scrap => scrap.sku === code)
+        .map(scrap => ({
+          id: scrap.id,
+          sku: scrap.sku,
+          medida: Number(scrap.medida) || 0,
+          endereco: scrap.endereco || ''
+        })),
+      virginBars: (sObj.dims || []).map(bar => ({
+        dim: Number(bar.dim) || 0,
+        qty: Math.max(0, Math.floor(Number(bar.qty) || 0))
+      }))
+    };
+  });
+
+  return {
+    timeoutMs: OTIM_SOLVER_TIMEOUT_MS,
+    cfgTrim: Number(sourceResult?.cfgTrim) || 0,
+    skus,
+    fallbackPlans: heuristicResults.map(result => result.plans)
+  };
+}
+
+function _runOtimSolverWorker(payload) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(OTIM_SOLVER_WORKER_URL);
+    let settled = false;
+    const safetyTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      reject(new Error('SOLVER_TIMEOUT_EXTERNO'));
+    }, OTIM_SOLVER_TIMEOUT_MS + 5000);
+
+    const finish = callback => value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(safetyTimer);
+      worker.terminate();
+      callback(value);
+    };
+    const succeed = finish(resolve);
+    const fail = finish(reject);
+
+    worker.onmessage = event => {
+      const message = event.data || {};
+      if (message.type === 'progress') {
+        _updateOtimSolverProgress({ phase: 'search', ...message.progress });
+      } else if (message.type === 'result') {
+        succeed(message.result);
+      } else if (message.type === 'error') {
+        fail(new Error(message.error || 'SOLVER_ERROR'));
+      }
+    };
+    worker.onerror = event => fail(new Error(event.message || 'SOLVER_WORKER_ERROR'));
+    worker.postMessage({ type: 'solve', payload });
+  });
+}
+
+function _updateOtimSolverProgress(progress = {}) {
+  const title = document.getElementById('otimProgressTitle');
+  const details = document.getElementById('otimProgressDetails');
+  if (progress.phase === 'solver-start') {
+    if (title) title.textContent = 'Buscando o melhor planejamento global...';
+    if (details) details.textContent = 'Avaliando combinações de peças, sobras e barras em segundo plano.';
+    return;
+  }
+
+  if (progress.phase === 'search') {
+    const explored = Number(progress.explored || 0).toLocaleString('pt-BR');
+    const seconds = (Number(progress.elapsedMs || 0) / 1000).toFixed(1).replace('.', ',');
+    if (title) title.textContent = `Avaliando possibilidades do SKU ${progress.sku || '...'}`;
+    if (details) {
+      details.textContent = `${explored} estados avaliados · ${progress.completedSkus || 0}/${progress.totalSkus || 0} SKU(s) concluídos · ${seconds}s`;
+    }
   }
 }
 
@@ -741,6 +979,7 @@ function _otimPlanMetrics(plans, cfgTrim) {
   const totalRefile = safePlans.length * cfgTrim;
   const globalWaste = totalRefugo + totalRefile;
   const totalUseful = totalUsedLen + totalSobraUtil;
+  const efficiencyValue = totalBarLen > 0 ? totalUseful / totalBarLen : 0;
 
   return {
     totalUsedLen,
@@ -751,7 +990,8 @@ function _otimPlanMetrics(plans, cfgTrim) {
     totalBars: safePlans.length,
     virginBars: safePlans.filter(plan => plan.type === 'virgin').length,
     scrapBars: safePlans.filter(plan => plan.type === 'scrap').length,
-    efficiency: totalBarLen > 0 ? ((totalUseful / totalBarLen) * 100).toFixed(2) : '0.00'
+    efficiencyValue,
+    efficiency: (efficiencyValue * 100).toFixed(2)
   };
 }
 
@@ -770,23 +1010,23 @@ function _otimPlanSignature(plans) {
   return JSON.stringify(normalized);
 }
 
-function _otimAlternativesAreEqual(currentAlternative, forcedAlternative) {
+function _otimAlternativesAreEqual(globalAlternative, forcedAlternative) {
   return !!(
-    currentAlternative?.result
+    globalAlternative?.result
     && forcedAlternative?.result
-    && _otimPlanSignature(currentAlternative.result.plans) === _otimPlanSignature(forcedAlternative.result.plans)
+    && _otimPlanSignature(globalAlternative.result.plans) === _otimPlanSignature(forcedAlternative.result.plans)
   );
 }
 
-function _renderOtimComparison(currentAlternative, forcedAlternative) {
+function _renderOtimComparison(globalAlternative, forcedAlternative) {
   window._otimAlternatives = {
-    [OTIM_STRATEGY_CURRENT]: currentAlternative,
+    [OTIM_STRATEGY_GLOBAL]: globalAlternative,
     [OTIM_STRATEGY_FORCE_SCRAPS]: forcedAlternative
   };
-  window._otimAlternativesEqual = _otimAlternativesAreEqual(currentAlternative, forcedAlternative);
+  window._otimAlternativesEqual = _otimAlternativesAreEqual(globalAlternative, forcedAlternative);
 
-  const initialStrategy = currentAlternative.result
-    ? OTIM_STRATEGY_CURRENT
+  const initialStrategy = globalAlternative.result
+    ? OTIM_STRATEGY_GLOBAL
     : OTIM_STRATEGY_FORCE_SCRAPS;
   _showOtimAlternative(initialStrategy);
 }
@@ -806,7 +1046,8 @@ function _showOtimAlternative(strategy) {
     result.usedScraps,
     result.cfgTrim,
     result.cfgPen,
-    result.strategy
+    result.strategy,
+    result.solver
   );
 
   const area = document.getElementById('otimResults');
@@ -836,7 +1077,7 @@ function _renderOtimComparisonPanel(selectedStrategy) {
       </div>
       ${equalNotice}
       <div class="otim-compare-grid">
-        ${_renderOtimAlternativeCard(alternatives[OTIM_STRATEGY_CURRENT], selectedStrategy)}
+        ${_renderOtimAlternativeCard(alternatives[OTIM_STRATEGY_GLOBAL], selectedStrategy)}
         ${_renderOtimAlternativeCard(alternatives[OTIM_STRATEGY_FORCE_SCRAPS], selectedStrategy)}
       </div>
     </div>
@@ -844,13 +1085,13 @@ function _renderOtimComparisonPanel(selectedStrategy) {
 }
 
 function _renderOtimAlternativeCard(alternative, selectedStrategy) {
-  const strategy = alternative?.strategy || OTIM_STRATEGY_CURRENT;
+  const strategy = alternative?.strategy || OTIM_STRATEGY_GLOBAL;
   const isForced = strategy === OTIM_STRATEGY_FORCE_SCRAPS;
   const isSelected = selectedStrategy === strategy;
-  const title = isForced ? 'Forçar utilização das sobras' : 'Melhor aproveitamento';
+  const title = isForced ? 'Forçar utilização das sobras' : 'Melhor planejamento global';
   const description = isForced
-    ? 'Maximiza o número de retalhos compatíveis utilizados, mesmo com eficiência menor.'
-    : 'Mantém o critério seletivo atual e prioriza o melhor aproveitamento do material.';
+    ? 'Maximiza primeiro o número de retalhos utilizados e otimiza o aproveitamento dentro dessa condição.'
+    : 'Avalia combinações globais e escolhe maior aproveitamento, menor desperdício, menos barras inteiras e menos operações.';
 
   if (!alternative?.result) {
     const errorMessage = _otimEsc(alternative?.error?.message || 'Não foi possível calcular esta alternativa.');
@@ -865,13 +1106,21 @@ function _renderOtimAlternativeCard(alternative, selectedStrategy) {
 
   const result = alternative.result;
   const metrics = _otimPlanMetrics(result.plans, result.cfgTrim);
+  const solver = result.solver || {};
+  const solverBadge = solver.optimal
+    ? (isForced ? 'Máximo comprovado' : 'Ótimo comprovado')
+    : (solver.timedOut ? 'Melhor encontrado no limite' : 'Melhor heurística disponível');
+  const solverTitle = solver.explored
+    ? `${Number(solver.explored).toLocaleString('pt-BR')} estados avaliados em ${(Number(solver.elapsedMs || 0) / 1000).toFixed(1).replace('.', ',')}s`
+    : (solver.message || solverBadge);
   return `
     <div class="otim-compare-card ${isSelected ? 'otim-compare-card--selected' : ''}">
       <div class="otim-compare-card-head">
         <div class="otim-compare-card-title">${title}</div>
-        ${isSelected ? '<span class="status-badge badge-approved">Mapa exibido</span>' : ''}
+        <span class="status-badge ${solver.optimal ? 'badge-approved' : 'badge-pending'}" title="${_otimEsc(solverTitle)}">${solverBadge}</span>
       </div>
       <div class="otim-compare-card-desc">${description}</div>
+      <div class="otim-solver-meta">${_otimEsc(solverTitle)}</div>
       <div class="otim-compare-metrics">
         <div><span>Aproveitamento</span><b>${metrics.efficiency}%</b></div>
         <div><span>Barras inteiras</span><b>${metrics.virginBars}</b></div>
@@ -888,8 +1137,8 @@ function _renderOtimAlternativeCard(alternative, selectedStrategy) {
 /* ============================================================
    RENDER RESULTADOS
    ============================================================ */
-function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy = OTIM_STRATEGY_CURRENT) {
-  window._lastOtimResult = { plans, loteId, usedScraps, strategy };
+function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy = OTIM_STRATEGY_CURRENT, solver = null) {
+  window._lastOtimResult = { plans, loteId, usedScraps, strategy, solver };
   const area = document.getElementById('otimResults');
 
   const metrics = _otimPlanMetrics(plans, cfgTrim);
@@ -897,7 +1146,9 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy 
   const eff = metrics.efficiency;
   const strategyLabel = strategy === OTIM_STRATEGY_FORCE_SCRAPS
     ? 'Forçar utilização das sobras'
-    : 'Melhor aproveitamento';
+    : strategy === OTIM_STRATEGY_GLOBAL
+      ? 'Melhor planejamento global'
+      : 'Estratégia seletiva';
 
   // Agrupar planos por SKU para visualização
   const skuOrder = [];
@@ -1061,7 +1312,7 @@ function _renderBarCard(p, idx, cfgTrim) {
 async function _finalizarOtimizacao() {
   const res = window._lastOtimResult;
   if (!res) return;
-  const { plans, loteId, usedScraps, strategy = OTIM_STRATEGY_CURRENT } = res;
+  const { plans, loteId, usedScraps, strategy = OTIM_STRATEGY_CURRENT, solver = null } = res;
 
   const lote = appState.lotes.find(l => l.id === loteId);
   if (lote) {
@@ -1161,6 +1412,12 @@ async function _finalizarOtimizacao() {
      approvedAt: finalizedAt,
      approvedBy: approver,
      estrategia: strategy,
+     solver: solver ? {
+       optimal: !!solver.optimal,
+       timedOut: !!solver.timedOut,
+       explored: Number(solver.explored) || 0,
+       elapsedMs: Number(solver.elapsedMs) || 0
+     } : null,
      skuPlanIds,
      sobrasUtilizadas: sobrasConsumidas.map(s => ({
        id: s.id || '',
@@ -1206,7 +1463,11 @@ async function _finalizarOtimizacao() {
       throw err;
     }
   }
-  await DB.log("Finalizou Otimização", "unilux_historico", `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name} · Estratégia: ${strategy}`);
+  await DB.log(
+    "Finalizou Otimização",
+    "unilux_historico",
+    `Lote ${loteId} (${plans.length} barras) aprovado por ${approver.name} · Estratégia: ${strategy}${solver ? ` · Ótimo comprovado: ${solver.optimal ? 'sim' : 'não'} · Estados: ${Number(solver.explored) || 0}` : ''}`
+  );
   
   showToast(`Plano ${loteId} finalizado e salvo na nuvem!`, 'success');
   updateBadges();
