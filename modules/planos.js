@@ -409,6 +409,9 @@ function _verPlanoMapa(planoId) {
   const virginPlans = plano.mapa.filter(p => p.type === 'virgin');
   const scrapPlans  = plano.mapa.filter(p => p.type === 'scrap');
   const approval = _planoApprovalInfo(plano);
+  const solverStatus = plano.solver
+    ? (plano.solver.optimal ? 'Ótimo comprovado' : 'Melhor encontrado no limite')
+    : '';
 
   // Resumo de Barras Virgens
   const virginSkuCounts = {};
@@ -446,7 +449,7 @@ function _verPlanoMapa(planoId) {
       </div>
 
       <div class="plano-map-meta">
-        Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b> | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b> | Aprovado por: <b>${_planosEsc(approval.name)}</b>${approval.email ? ` <span>(${_planosEsc(approval.email)})</span>` : ''}
+        Lote: <b>${plano.loteId}</b> | Aproveitamento: <b>${plano.aproveitamento}</b>${solverStatus ? ` | Busca: <b>${solverStatus}</b>` : ''} | Data: <b>${new Date(plano.data).toLocaleString('pt-BR')}</b> | Aprovado por: <b>${_planosEsc(approval.name)}</b>${approval.email ? ` <span>(${_planosEsc(approval.email)})</span>` : ''}
       </div>
 
       <div id="modalMapaContent" class="plano-map-list">

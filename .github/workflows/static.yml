@@ -29,11 +29,13 @@ jobs:
           set -euo pipefail
 
           test -s index.html
+          test -s modules/optimization-worker.js
           test -s vendor/supabase-js-2.108.2.min.js
           test -s vendor/xlsx-0.20.3.full.min.js
 
           grep -q 'vendor/supabase-js-2.108.2.min.js' index.html
           grep -q 'vendor/xlsx-0.20.3.full.min.js' index.html
+          grep -q 'modules/optimization-worker.js' modules/otimizador.js
 
           if grep -Eq 'cdn\.jsdelivr|cdn\.sheetjs' index.html; then
             echo "Critical browser libraries must be served locally from vendor/."
