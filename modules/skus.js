@@ -152,6 +152,7 @@ function _getSkuFormHtml(sku = null) {
   const code = sku ? sku.code : '';
   const desc = sku ? sku.desc : '';
   const pricePerMeter = sku ? skuPricePerMeter(sku.code) : 0;
+  const suggestedPrice = _pricingSuggestionFromDescription(desc);
   const dims = sku && Array.isArray(sku.dims) && sku.dims.length
     ? sku.dims
     : [{ dim: '', qty: '' }, { dim: '', qty: '' }, { dim: '', qty: '' }];
@@ -176,7 +177,9 @@ function _getSkuFormHtml(sku = null) {
     <div class="form-group">
       <label class="form-label">Valor do Perfil por Metro (R$/m)</label>
       <input type="number" min="0" step="0.0001" class="form-control" id="skPricePerMeter" value="${pricePerMeter > 0 ? pricePerMeter : ''}" placeholder="Ex: 9,7300">
-      <div class="form-hint">Este é o valor usado no estoque, nas sobras, no dashboard e nos planos de otimização.</div>
+      <div class="form-hint">${!pricePerMeter && suggestedPrice
+        ? `Sugestão pela descrição: ${fmtBRL(suggestedPrice.pricePerMeter)}/m (${suggestedPrice.metersPerKg.toFixed(4).replace('.', ',')} m/kg · ${suggestedPrice.category}). Será aplicada se o campo ficar vazio.`
+        : 'Este é o valor usado no estoque, nas sobras, no dashboard e nos planos de otimização.'}</div>
     </div>
     <div class="form-group">
       <label class="form-label">Sobra Mínima para Guarda (m) <span style="font-weight:400; color:var(--text-400);">(Descartes menores irão para o lixo)</span></label>
@@ -260,7 +263,9 @@ async function _salvarSku() {
   const desc = document.getElementById('skDesc').value.trim();
   const short_desc = document.getElementById('skShortDesc').value.trim();
   const folder = document.getElementById('skFolder').value.trim();
-  const pricePerMeter = Math.max(0, parseFloat(String(document.getElementById('skPricePerMeter').value || '0').replace(',', '.')) || 0);
+  const manualPrice = Math.max(0, parseFloat(String(document.getElementById('skPricePerMeter').value || '0').replace(',', '.')) || 0);
+  const suggestedPrice = _pricingSuggestionFromDescription(desc);
+  const pricePerMeter = manualPrice || suggestedPrice?.pricePerMeter || 0;
   
   // Converte Metros para Milímetros (int)
   const minSobra = Math.round(parseFloat(document.getElementById('skMinSobra').value.replace(',', '.')) * 1000) || 1000;
@@ -276,7 +281,11 @@ async function _salvarSku() {
   
   try {
     appState.skus.push(s);
-    _setSkuPricePerMeter(s.code, pricePerMeter, { method: 'catalogo-manual', updatedAt: new Date().toISOString() });
+    _setSkuPricePerMeter(s.code, pricePerMeter, manualPrice > 0
+      ? { method: 'catalogo-manual', updatedAt: new Date().toISOString() }
+      : suggestedPrice
+        ? { method: 'descricao-automatica', category: suggestedPrice.category, costPerKg: suggestedPrice.costPerKg, metersPerKg: suggestedPrice.metersPerKg, updatedAt: new Date().toISOString() }
+        : { method: 'preco-pendente', updatedAt: new Date().toISOString() });
     await DB.saveSku(s);
     await DB.saveComprasConfig();
     await DB.log("Cadastrou SKU", "unilux_skus", `${s.code} - ${s.desc} · ${pricePerMeter > 0 ? `${fmtBRL(pricePerMeter)}/m` : 'preço pendente'}`);
@@ -315,7 +324,9 @@ async function _saveEditSku(id) {
     s.desc = document.getElementById('skDesc').value.trim();
     s.short_desc = document.getElementById('skShortDesc').value.trim();
     s.folder = document.getElementById('skFolder').value.trim();
-    const pricePerMeter = Math.max(0, parseFloat(String(document.getElementById('skPricePerMeter').value || '0').replace(',', '.')) || 0);
+    const manualPrice = Math.max(0, parseFloat(String(document.getElementById('skPricePerMeter').value || '0').replace(',', '.')) || 0);
+    const suggestedPrice = _pricingSuggestionFromDescription(s.desc);
+    const pricePerMeter = manualPrice || suggestedPrice?.pricePerMeter || 0;
     
     // Converte Metros para Milímetros (int)
     const minSobraRaw = document.getElementById('skMinSobra').value;
@@ -329,7 +340,11 @@ async function _saveEditSku(id) {
     s.code = originalCode;
     
     await DB.saveSku(s);
-    _setSkuPricePerMeter(s.code, pricePerMeter, { method: 'catalogo-manual', updatedAt: new Date().toISOString() });
+    _setSkuPricePerMeter(s.code, pricePerMeter, manualPrice > 0
+      ? { method: 'catalogo-manual', updatedAt: new Date().toISOString() }
+      : suggestedPrice
+        ? { method: 'descricao-automatica', category: suggestedPrice.category, costPerKg: suggestedPrice.costPerKg, metersPerKg: suggestedPrice.metersPerKg, updatedAt: new Date().toISOString() }
+        : { method: 'preco-pendente', updatedAt: new Date().toISOString() });
     await DB.saveComprasConfig();
     await DB.log("Editou SKU", "unilux_skus", `${s.code} - ${s.desc} · ${fmtBRL(pricePerMeter)}/m`);
     

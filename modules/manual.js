@@ -147,7 +147,16 @@ function renderManual() {
         </ol>
       `)}
 
-      ${_manualSection('7. Dashboard e acompanhamento', `
+      ${_manualSection('7. Compras e custo médio', `
+        <ol style="font-size:14px; color:var(--text-700); line-height:1.8; margin:0; padding-left:20px;">
+          <li>Na aba <strong>Compras</strong>, use <strong>Entrada de SKU</strong> para registrar barras recebidas.</li>
+          <li>Informe obrigatoriamente SKU, comprimento, quantidade e o <strong>valor total da entrada</strong>.</li>
+          <li>Antes de salvar, confira o custo por metro da entrada e o novo custo médio ponderado exibidos na tela.</li>
+          <li>O cálculo considera o valor e a metragem do estoque anterior mais o valor e a metragem recebidos. Quando o SKU ainda não tem preço, a primeira entrada inicia o custo por metro.</li>
+        </ol>
+      `)}
+
+      ${_manualSection('8. Dashboard e acompanhamento', `
         <ol style="font-size:14px; color:var(--text-700); line-height:1.8; margin:0; padding-left:20px;">
           <li>Use o <strong>Dashboard</strong> para acompanhar o desempenho dos planos já gerados.</li>
           <li>Ajuste o período pelos campos de data e filtre por SKU quando quiser analisar um perfil específico.</li>
@@ -158,7 +167,7 @@ function renderManual() {
         </ol>
       `)}
 
-      ${_manualSection('8. Configurações, usuários e auditoria', `
+      ${_manualSection('9. Configurações, usuários e auditoria', `
         <ol style="font-size:14px; color:var(--text-700); line-height:1.8; margin:0; padding-left:20px;">
           <li><strong>Configurações</strong>, <strong>Usuários</strong> e <strong>Auditoria</strong> são áreas administrativas.</li>
           <li>Em <strong>Configurações</strong>, ajuste o refile inicial e a taxa média de desperdício esperada em sobras.</li>

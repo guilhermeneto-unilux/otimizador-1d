@@ -9,6 +9,91 @@ function _pricingCode(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function _pricingDescriptionText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function _pricingMetersPerKgFromDescription(description) {
+  const text = _pricingDescriptionText(description);
+  const withUnit = /1\s*k\s*g\s*\.?\s*(?:=)?\s*([0-9]+(?:[,.][0-9]+)?)\s*m(?:l)?/i.exec(text);
+  const withEquals = /1\s*k\s*g\s*\.?\s*=\s*([0-9]+(?:[,.][0-9]+)?)/i.exec(text);
+  const match = withUnit || withEquals;
+  if (!match) return 0;
+
+  const matchEnd = match.index + match[0].length;
+  if (text.slice(matchEnd, matchEnd + 1) === '/') return 0;
+  const factor = _pricingNumber(match[1], 0);
+  return factor >= 0.1 && factor <= 50 ? factor : 0;
+}
+
+function _pricingMaterialFromDescription(description) {
+  const text = ` ${_pricingDescriptionText(description)} `;
+  const has = pattern => pattern.test(text);
+
+  if (has(/\b(aco|steel|chrome|sts)\b/) || has(/\bcor\s+[0-9]{2,}\b/)) {
+    return { category: 'Aço/outros', costPerKg: 20 };
+  }
+  if (has(/\b(dark|darck)\s*cherry\b/)) return { category: 'Dark Cherry', costPerKg: 43.11 };
+  if (has(/\bcherry\b/)) return { category: 'Cherry', costPerKg: 44.92 };
+  if (has(/branco/) || has(/\b(white|bco)\b/)) return { category: 'Branco', costPerKg: 40.57 };
+  if (has(/\bbronze\b/)) return { category: 'Bronze', costPerKg: 42.94 };
+  if (has(/\b(grafite|graphite)\b/)) return { category: 'Grafite', costPerKg: 41.98 };
+  if (has(/\b(bege|taupe)\b/)) return { category: has(/\btaupe\b/) ? 'Taupe/Bege' : 'Bege', costPerKg: 44.39 };
+  if (has(/\b(cinza|grey|gray|cz)\b/)) return { category: 'Cinza', costPerKg: 42.61 };
+  if (has(/\b(preto|black|pt)\b/)) return { category: 'Preto', costPerKg: 39.74 };
+
+  // Regra de negócio informada pelo PCP: na ausência de cor, considerar alumínio cru.
+  return { category: 'Alumínio cru', costPerKg: 34.74 };
+}
+
+function _pricingSuggestionFromDescription(description) {
+  const metersPerKg = _pricingMetersPerKgFromDescription(description);
+  if (!metersPerKg) return null;
+  const material = _pricingMaterialFromDescription(description);
+  return {
+    ...material,
+    metersPerKg,
+    pricePerMeter: material.costPerKg / metersPerKg
+  };
+}
+
+function _pricingStockLengthMm(sku) {
+  return (sku?.dims || []).reduce((sum, item) => (
+    sum
+      + Math.max(0, _pricingNumber(item?.dim, 0))
+      * Math.max(0, Math.floor(_pricingNumber(item?.qty, 0)))
+  ), 0);
+}
+
+function _pricingPurchaseAverage({ currentPricePerMeter, currentStockMm, incomingLengthMm, incomingTotalValue }) {
+  const currentPrice = Math.max(0, _pricingNumber(currentPricePerMeter, 0));
+  const currentMeters = Math.max(0, _pricingNumber(currentStockMm, 0)) / 1000;
+  const incomingMeters = Math.max(0, _pricingNumber(incomingLengthMm, 0)) / 1000;
+  const entryValue = Math.max(0, _pricingNumber(incomingTotalValue, 0));
+  if (!incomingMeters || !entryValue) return null;
+
+  const entryPricePerMeter = entryValue / incomingMeters;
+  const hasValuedStock = currentPrice > 0 && currentMeters > 0;
+  const currentStockValue = hasValuedStock ? currentMeters * currentPrice : 0;
+  const newPricePerMeter = hasValuedStock
+    ? (currentStockValue + entryValue) / (currentMeters + incomingMeters)
+    : entryPricePerMeter;
+
+  return {
+    currentMeters,
+    currentStockValue,
+    incomingMeters,
+    incomingTotalValue: entryValue,
+    entryPricePerMeter,
+    newStockMeters: currentMeters + incomingMeters,
+    newPricePerMeter,
+    initializedUnpricedStock: currentMeters > 0 && currentPrice <= 0
+  };
+}
+
 function _pricingSettingsForSku(code) {
   const skus = appState.comprasConfig && appState.comprasConfig.skus;
   if (!skus || typeof skus !== 'object') return null;

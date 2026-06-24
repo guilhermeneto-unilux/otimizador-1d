@@ -859,12 +859,22 @@ function _openComprasEntradaModal() {
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Comprimento recebido (m)</label>
-        <input type="number" step="0.001" min="0" class="form-control" id="entradaComprimento" placeholder="Ex: 6.000">
+        <input type="number" step="0.001" min="0" class="form-control" id="entradaComprimento" placeholder="Ex: 6.000" oninput="_updateComprasEntradaCostPreview()">
       </div>
       <div class="form-group">
         <label class="form-label">Qtd. barras</label>
-        <input type="number" step="1" min="1" class="form-control" id="entradaQuantidade" placeholder="Ex: 20">
+        <input type="number" step="1" min="1" class="form-control" id="entradaQuantidade" placeholder="Ex: 20" oninput="_updateComprasEntradaCostPreview()">
       </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Valor total da entrada (R$) <span style="color:var(--red);">*</span></label>
+      <input type="number" step="0.01" min="0.01" class="form-control" id="entradaValorTotal" placeholder="Ex: 4.850,00" oninput="_updateComprasEntradaCostPreview()" required>
+      <div class="form-hint">Informe o valor total das barras recebidas. O sistema calculará o custo por metro da entrada e a nova média ponderada do estoque.</div>
+    </div>
+
+    <div class="entrada-sku-info" id="entradaCostPreview">
+      ${_renderComprasEntradaCostPreview(null)}
     </div>
 
     <div class="form-group" style="margin-bottom:0;">
@@ -887,6 +897,7 @@ function _selectComprasEntradaSku(code) {
     const primary = (sku.dims || []).slice().sort((a, b) => (b.qty || 0) - (a.qty || 0) || (b.dim || 0) - (a.dim || 0))[0];
     if (primary && primary.dim) lenInput.value = _comprasMValue(primary.dim);
   }
+  _updateComprasEntradaCostPreview();
 }
 
 function _renderComprasEntradaSkuInfo(sku) {
@@ -908,7 +919,45 @@ function _renderComprasEntradaSkuInfo(sku) {
       <span>Saldo atual</span>
       <div class="compras-chips">${dims.length ? dims.map(d => `<span>${fmtM(d.dim)} · ${_comprasInt(d.qty, 0)}x</span>`).join('') : '<span>sem estoque</span>'}</div>
     </div>
+    <div class="entrada-sku-field"><span>Custo médio atual</span><b>${skuPricePerMeter(sku.code) > 0 ? `${fmtBRL(skuPricePerMeter(sku.code))}/m` : 'preço pendente'}</b></div>
   `;
+}
+
+function _renderComprasEntradaCostPreview(calculation) {
+  if (!calculation) {
+    return `
+      <div class="entrada-sku-field"><span>Custo da entrada</span><b>-</b></div>
+      <div class="entrada-sku-field"><span>Novo custo médio</span><b>-</b></div>
+      <div class="entrada-sku-stock"><span>Preencha SKU, comprimento, quantidade e valor total para visualizar o cálculo.</span></div>
+    `;
+  }
+  return `
+    <div class="entrada-sku-field"><span>Estoque anterior</span><b>${calculation.currentMeters.toFixed(3).replace('.', ',')} m · ${fmtBRL(calculation.currentStockValue)}</b></div>
+    <div class="entrada-sku-field"><span>Entrada</span><b>${calculation.incomingMeters.toFixed(3).replace('.', ',')} m · ${fmtBRL(calculation.incomingTotalValue)}</b></div>
+    <div class="entrada-sku-field"><span>Custo da entrada</span><b>${fmtBRL(calculation.entryPricePerMeter)}/m</b></div>
+    <div class="entrada-sku-field"><span>Novo custo médio ponderado</span><b style="color:var(--green);">${fmtBRL(calculation.newPricePerMeter)}/m</b></div>
+    ${calculation.initializedUnpricedStock ? '<div class="entrada-sku-stock"><span>Como o estoque anterior estava sem preço, o custo desta entrada será usado como custo inicial do SKU.</span></div>' : ''}
+  `;
+}
+
+function _comprasEntradaCalculation() {
+  const code = document.getElementById('entradaSkuSelect')?.value || '';
+  const sku = (appState.skus || []).find(item => item.code === code);
+  if (!sku) return null;
+  const lengthMm = _comprasMetersToMm(document.getElementById('entradaComprimento')?.value, 0);
+  const qty = Math.max(0, _comprasInt(document.getElementById('entradaQuantidade')?.value, 0));
+  const totalValue = Math.max(0, _comprasNumber(document.getElementById('entradaValorTotal')?.value, 0));
+  return _pricingPurchaseAverage({
+    currentPricePerMeter: skuPricePerMeter(code),
+    currentStockMm: _pricingStockLengthMm(sku),
+    incomingLengthMm: lengthMm * qty,
+    incomingTotalValue: totalValue
+  });
+}
+
+function _updateComprasEntradaCostPreview() {
+  const preview = document.getElementById('entradaCostPreview');
+  if (preview) preview.innerHTML = _renderComprasEntradaCostPreview(_comprasEntradaCalculation());
 }
 
 async function _saveComprasEntrada() {
@@ -918,10 +967,23 @@ async function _saveComprasEntrada() {
 
   const lengthMm = _comprasMetersToMm(document.getElementById('entradaComprimento')?.value, 0);
   const qty = Math.max(0, _comprasInt(document.getElementById('entradaQuantidade')?.value, 0));
+  const totalValue = Math.max(0, _comprasNumber(document.getElementById('entradaValorTotal')?.value, 0));
   const obs = document.getElementById('entradaObs')?.value.trim() || '';
 
   if (!lengthMm) { showToast('Informe o comprimento recebido.', 'error'); return; }
   if (!qty) { showToast('Informe a quantidade de barras recebidas.', 'error'); return; }
+  if (!totalValue) { showToast('Informe o valor total da entrada.', 'error'); return; }
+
+  const previousDims = JSON.parse(JSON.stringify(Array.isArray(sku.dims) ? sku.dims : []));
+  const previousComprasConfig = JSON.parse(JSON.stringify(appState.comprasConfig || { global: {}, skus: {} }));
+  const previousPrice = skuPricePerMeter(code);
+  const calculation = _pricingPurchaseAverage({
+    currentPricePerMeter: previousPrice,
+    currentStockMm: _pricingStockLengthMm(sku),
+    incomingLengthMm: lengthMm * qty,
+    incomingTotalValue: totalValue
+  });
+  if (!calculation) { showToast('Não foi possível calcular o custo da entrada.', 'error'); return; }
 
   const dims = Array.isArray(sku.dims) ? sku.dims : [];
   const existing = dims.find(d => Math.abs(_comprasInt(d.dim, 0) - lengthMm) <= 1);
@@ -932,17 +994,42 @@ async function _saveComprasEntrada() {
     dims.push({ dim: lengthMm, qty });
   }
   sku.dims = _comprasNormalizeSkuDims(dims);
+  _setSkuPricePerMeter(code, calculation.newPricePerMeter, {
+    method: 'entrada-media-ponderada',
+    previousPricePerMeter: previousPrice,
+    previousStockMeters: calculation.currentMeters,
+    entryMeters: calculation.incomingMeters,
+    entryTotalValue: calculation.incomingTotalValue,
+    entryPricePerMeter: calculation.entryPricePerMeter,
+    updatedAt: new Date().toISOString()
+  });
 
   try {
     await DB.saveSku(sku);
-    await DB.log("Entrada manual de SKU", "unilux_skus", `${sku.code}: +${qty} barra(s) de ${fmtM(lengthMm)}${obs ? ` · ${obs}` : ''}`);
-    closeModal();
-    showToast('Entrada registrada no estoque!', 'success');
-    renderCompras();
+    try {
+      await DB.saveComprasConfig();
+    } catch (priceError) {
+      sku.dims = previousDims;
+      appState.comprasConfig = previousComprasConfig;
+      await Promise.allSettled([DB.saveSku(sku), DB.saveComprasConfig()]);
+      throw priceError;
+    }
+    try {
+      await DB.log("Entrada manual de SKU", "unilux_skus", `${sku.code}: +${qty} barra(s) de ${fmtM(lengthMm)} · Entrada ${fmtBRL(totalValue)} · Custo ${fmtBRL(previousPrice)}/m → ${fmtBRL(calculation.newPricePerMeter)}/m${obs ? ` · ${obs}` : ''}`);
+    } catch (auditError) {
+      console.warn('Entrada salva, mas o registro de auditoria falhou:', auditError);
+    }
   } catch (err) {
+    sku.dims = previousDims;
+    appState.comprasConfig = previousComprasConfig;
     console.error('Falha ao registrar entrada:', err);
     showToast('Erro ao salvar entrada no banco.', 'error');
+    return;
   }
+
+  closeModal();
+  showToast(`Entrada registrada. Novo custo: ${fmtBRL(calculation.newPricePerMeter)}/m`, 'success');
+  renderCompras();
 }
 
 function _comprasNormalizeSkuDims(dims) {
