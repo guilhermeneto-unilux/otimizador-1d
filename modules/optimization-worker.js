@@ -375,7 +375,6 @@ function addParetoCandidate(frontier, candidate) {
 
 function candidateDominates(left, right) {
   const noWorse = left.sourceLen <= right.sourceLen + SOLVER_EPSILON
-    && left.usefulLen + SOLVER_EPSILON >= right.usefulLen
     && left.waste <= right.waste + SOLVER_EPSILON
     && left.virginBars <= right.virginBars
     && left.totalBins <= right.totalBins
@@ -383,7 +382,6 @@ function candidateDominates(left, right) {
   if (!noWorse) return false;
 
   return left.sourceLen < right.sourceLen - SOLVER_EPSILON
-    || left.usefulLen > right.usefulLen + SOLVER_EPSILON
     || left.waste < right.waste - SOLVER_EPSILON
     || left.virginBars < right.virginBars
     || left.totalBins < right.totalBins
@@ -393,7 +391,6 @@ function candidateDominates(left, right) {
 
 function sameCandidateMetrics(left, right) {
   return Math.abs(left.sourceLen - right.sourceLen) <= SOLVER_EPSILON
-    && Math.abs(left.usefulLen - right.usefulLen) <= SOLVER_EPSILON
     && Math.abs(left.waste - right.waste) <= SOLVER_EPSILON
     && left.virginBars === right.virginBars
     && left.totalBins === right.totalBins
@@ -401,12 +398,14 @@ function sameCandidateMetrics(left, right) {
 }
 
 function compareGlobalCandidates(left, right) {
-  const efficiencyDiff = candidateEfficiency(right) - candidateEfficiency(left);
-  if (Math.abs(efficiencyDiff) > SOLVER_EPSILON) return efficiencyDiff;
+  // Nunca use uma razão global como objetivo primário. Quando sobras reutilizáveis
+  // entram no numerador, abrir barras extras pode diluir o refugo de outro SKU e
+  // aumentar artificialmente a "eficiência" do lote. O objetivo abaixo é aditivo:
+  // primeiro compacta o material aberto, depois reduz operações e perda definitiva.
+  if (left.sourceLen !== right.sourceLen) return left.sourceLen - right.sourceLen;
+  if (left.totalBins !== right.totalBins) return left.totalBins - right.totalBins;
   if (left.waste !== right.waste) return left.waste - right.waste;
   if (left.virginBars !== right.virginBars) return left.virginBars - right.virginBars;
-  if (left.totalBins !== right.totalBins) return left.totalBins - right.totalBins;
-  if (left.sourceLen !== right.sourceLen) return left.sourceLen - right.sourceLen;
   return right.scrapBars - left.scrapBars;
 }
 
@@ -416,13 +415,14 @@ function compareForcedCandidates(left, right) {
 }
 
 function candidateEfficiency(candidate) {
-  return candidate.sourceLen > 0 ? candidate.usefulLen / candidate.sourceLen : 0;
+  return candidate.sourceLen > 0 ? candidate.pieceLen / candidate.sourceLen : 0;
 }
 
 function exportCandidate(candidate) {
   return {
     plans: candidate.plans,
     efficiency: candidateEfficiency(candidate),
+    materialPreservation: candidate.sourceLen > 0 ? candidate.usefulLen / candidate.sourceLen : 0,
     waste: candidate.waste,
     virginBars: candidate.virginBars,
     scrapBars: candidate.scrapBars,

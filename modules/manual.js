@@ -90,8 +90,8 @@ function renderManual() {
           <li>Clique em <strong>Calcular e Comparar</strong>. O sistema executará uma busca global e também calculará <strong>Forçar utilização das sobras</strong>.</li>
           <li>A busca roda em segundo plano e pode levar alguns segundos. A tela informa o SKU atual, os estados avaliados e o tempo decorrido.</li>
           <li><strong>Ótimo comprovado</strong> significa que todas as combinações relevantes foram avaliadas. Se o limite de segurança de 30 segundos for atingido, o sistema identifica o resultado como <strong>Melhor encontrado no limite</strong>.</li>
-          <li>Compare aproveitamento, barras inteiras, retalhos usados e desperdício. Use <strong>Ver mapa e avaliar</strong> para alternar entre os dois resultados.</li>
-          <li>O sistema separa as peças por SKU, ordena as maiores primeiro e tenta encaixar os cortes com o melhor aproveitamento possível.</li>
+          <li>Compare ocupação de corte, barras inteiras, retalhos usados e desperdício. Use <strong>Ver mapa e avaliar</strong> para alternar entre os dois resultados.</li>
+          <li>No melhor planejamento global, o sistema avalia as combinações e prioriza abrir o menor comprimento total de material, depois a menor quantidade de barras ou retalhos e a menor perda definitiva.</li>
           <li>O otimizador prioriza retalhos cadastrados no WMS quando eles são compatíveis com o SKU e a medida necessária.</li>
           <li>Quando não há retalho adequado, o sistema usa barras virgens cadastradas no SKU e escolhe a alternativa que reduz desperdício.</li>
           <li>Confira visualmente o mapa: peças em barra virgem, peças em retalho reutilizado, sobras geradas, refugo e refile aparecem com cores diferentes.</li>

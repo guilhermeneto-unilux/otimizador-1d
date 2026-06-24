@@ -49,6 +49,7 @@ jobs:
           done
 
           node tests/pricing.test.js
+          node tests/optimization-worker.test.js
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
