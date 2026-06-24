@@ -5,7 +5,7 @@ const OTIM_STRATEGY_CURRENT = 'current';
 const OTIM_STRATEGY_FORCE_SCRAPS = 'force-scraps';
 const OTIM_STRATEGY_GLOBAL = 'global';
 const OTIM_SOLVER_TIMEOUT_MS = 30000;
-const OTIM_SOLVER_WORKER_URL = 'modules/optimization-worker.js?v=1.0';
+const OTIM_SOLVER_WORKER_URL = 'modules/optimization-worker.js?v=1.1';
 
 function renderOtimizador() {
   const lotesDisp = appState.lotes.filter(l => l.status === 'pending' && l.ordens && l.ordens.length > 0);
@@ -304,10 +304,21 @@ async function _calculateRobustOtimAlternatives(currentAlternative, forcedHeuris
       solverInfo
     );
 
-    // Guardrail: o plano global nunca pode ficar abaixo de uma alternativa avaliada.
-    const guardedGlobal = _compareOtimResultsGlobal(globalResult, forcedResult) <= 0
+    // Guardrail: o plano global nunca pode ficar abaixo do solver forçado nem da
+    // heurística compacta já calculada. Se isto ocorrer, não anunciamos ótimo provado.
+    const heuristicGuard = _asOtimStrategyResult(bestHeuristic, OTIM_STRATEGY_GLOBAL, {
+      ...solverInfo,
+      optimal: false,
+      fallback: true,
+      message: 'Proteção de compactação acionada; exibindo a melhor alternativa segura.'
+    });
+    const globalOptions = [globalResult, forcedResult, heuristicGuard];
+    const guardedWinner = globalOptions.reduce((best, candidate) => (
+      !best || _compareOtimResultsGlobal(candidate, best) < 0 ? candidate : best
+    ), null);
+    const guardedGlobal = guardedWinner === globalResult
       ? globalResult
-      : _asOtimStrategyResult(forcedResult, OTIM_STRATEGY_GLOBAL, solverInfo);
+      : _asOtimStrategyResult(guardedWinner, OTIM_STRATEGY_GLOBAL, guardedWinner.solver);
 
     return {
       global: { strategy: OTIM_STRATEGY_GLOBAL, result: guardedGlobal, error: null },
@@ -363,12 +374,10 @@ function _solverCandidateToOtimResult(candidate, baseResult, strategy, solver) {
 function _compareOtimResultsGlobal(left, right) {
   const leftMetrics = _otimPlanMetrics(left?.plans || [], Number(left?.cfgTrim) || 0);
   const rightMetrics = _otimPlanMetrics(right?.plans || [], Number(right?.cfgTrim) || 0);
-  const efficiencyDiff = rightMetrics.efficiencyValue - leftMetrics.efficiencyValue;
-  if (Math.abs(efficiencyDiff) > 1e-12) return efficiencyDiff;
+  if (leftMetrics.totalBarLen !== rightMetrics.totalBarLen) return leftMetrics.totalBarLen - rightMetrics.totalBarLen;
+  if (leftMetrics.totalBars !== rightMetrics.totalBars) return leftMetrics.totalBars - rightMetrics.totalBars;
   if (leftMetrics.globalWaste !== rightMetrics.globalWaste) return leftMetrics.globalWaste - rightMetrics.globalWaste;
   if (leftMetrics.virginBars !== rightMetrics.virginBars) return leftMetrics.virginBars - rightMetrics.virginBars;
-  if (leftMetrics.totalBars !== rightMetrics.totalBars) return leftMetrics.totalBars - rightMetrics.totalBars;
-  if (leftMetrics.totalBarLen !== rightMetrics.totalBarLen) return leftMetrics.totalBarLen - rightMetrics.totalBarLen;
   return rightMetrics.scrapBars - leftMetrics.scrapBars;
 }
 
@@ -979,7 +988,8 @@ function _otimPlanMetrics(plans, cfgTrim) {
   const totalRefile = safePlans.length * cfgTrim;
   const globalWaste = totalRefugo + totalRefile;
   const totalUseful = totalUsedLen + totalSobraUtil;
-  const efficiencyValue = totalBarLen > 0 ? totalUseful / totalBarLen : 0;
+  const efficiencyValue = totalBarLen > 0 ? totalUsedLen / totalBarLen : 0;
+  const preservationValue = totalBarLen > 0 ? totalUseful / totalBarLen : 0;
   const financials = _calculatePlanFinancials(safePlans, cfgTrim);
 
   return {
@@ -993,6 +1003,8 @@ function _otimPlanMetrics(plans, cfgTrim) {
     scrapBars: safePlans.filter(plan => plan.type === 'scrap').length,
     efficiencyValue,
     efficiency: (efficiencyValue * 100).toFixed(2),
+    preservationValue,
+    preservation: (preservationValue * 100).toFixed(2),
     financials
   };
 }
@@ -1092,8 +1104,8 @@ function _renderOtimAlternativeCard(alternative, selectedStrategy) {
   const isSelected = selectedStrategy === strategy;
   const title = isForced ? 'Forçar utilização das sobras' : 'Melhor planejamento global';
   const description = isForced
-    ? 'Maximiza primeiro o número de retalhos utilizados e otimiza o aproveitamento dentro dessa condição.'
-    : 'Avalia combinações globais e escolhe maior aproveitamento, menor desperdício, menos barras inteiras e menos operações.';
+    ? 'Maximiza primeiro o número de retalhos utilizados e compacta os cortes dentro dessa condição.'
+    : 'Avalia combinações globais e minimiza material aberto, quantidade de fontes e perda definitiva.';
 
   if (!alternative?.result) {
     const errorMessage = _otimEsc(alternative?.error?.message || 'Não foi possível calcular esta alternativa.');
@@ -1124,11 +1136,11 @@ function _renderOtimAlternativeCard(alternative, selectedStrategy) {
       <div class="otim-compare-card-desc">${description}</div>
       <div class="otim-solver-meta">${_otimEsc(solverTitle)}</div>
       <div class="otim-compare-metrics">
-        <div><span>Aproveitamento</span><b>${metrics.efficiency}%</b></div>
+        <div><span>Ocupação de corte</span><b>${metrics.efficiency}%</b></div>
+        <div><span>Material aberto</span><b>${fmtM(metrics.totalBarLen)}</b></div>
         <div><span>Barras inteiras</span><b>${metrics.virginBars}</b></div>
         <div><span>Retalhos usados</span><b>${metrics.scrapBars}</b></div>
         <div><span>Desperdício</span><b>${fmtM(metrics.globalWaste)}</b></div>
-        <div><span>Valor em peças</span><b>${fmtBRL(metrics.financials.piecesValue)}</b></div>
         <div><span>Valor descartado</span><b>${metrics.financials.unpricedSkuCount ? `${fmtBRL(metrics.financials.discardValue)}*` : fmtBRL(metrics.financials.discardValue)}</b></div>
       </div>
       ${metrics.financials.unpricedSkuCount ? `<div class="otim-compare-price-warning">* Total parcial: ${metrics.financials.unpricedSkuCount} SKU(s) sem preço por metro.</div>` : ''}
@@ -1170,7 +1182,7 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy 
     <!-- Stats -->
     <div class="stats-row">
       <div class="stat-box" style="border-top:3px solid var(--green);">
-        <div class="stat-lbl">Eficiência Real</div>
+        <div class="stat-lbl">Ocupação Real</div>
         <div class="stat-val green">${eff}%</div>
       </div>
       <div class="stat-box">
@@ -1216,17 +1228,16 @@ function _renderResultados(plans, loteId, usedScraps, cfgTrim, cfgPen, strategy 
 
       const skuSobras = skuPlans.filter(x => x.plan.rem >= skuMinSobra).length;
 
-      // Calculate SKU Efficiency
+      // Ocupação real: somente peças produzidas, sem contar sobras como cortes prontos.
       const skuBarLen = skuPlans.reduce((s, x) => s + x.plan.len, 0);
       const skuUsedLen = skuPlans.reduce((s, x) => s + x.plan.pcs.reduce((a, pc) => a + pc.dim, 0), 0);
-      const skuSobraUtilLen = skuPlans.reduce((s, x) => s + (x.plan.rem >= skuMinSobra ? x.plan.rem : 0), 0);
-      const skuEff = skuBarLen > 0 ? (((skuUsedLen + skuSobraUtilLen) / skuBarLen) * 100).toFixed(1) : '0.0';
+      const skuEff = skuBarLen > 0 ? ((skuUsedLen / skuBarLen) * 100).toFixed(1) : '0.0';
 
       return `
         <div style="margin-bottom:20px;">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 16px; background:${sc.bg}22; border-radius:6px; border-left:4px solid ${sc.text};">
             <span class="sku-tag" style="background:${sc.bg};color:${sc.text}; font-size:12px; padding:4px 10px;">${sku} ${skuShortDesc ? `- ${skuShortDesc}` : ''}</span>
-            <span style="font-size:12px; font-weight:600; color:var(--text-500);">${skuBars} barra(s) · ${skuPcs} peça(s) <span style="margin-left:6px; padding:2px 6px; background:rgba(0,0,0,0.05); border-radius:4px;">Aproveitamento: <b>${skuEff}%</b></span>${skuSobras > 0 ? ` · <span style="color:#16a34a;">♻ ${skuSobras} sobra(s) gerada(s)</span>` : ''}</span>
+            <span style="font-size:12px; font-weight:600; color:var(--text-500);">${skuBars} barra(s) · ${skuPcs} peça(s) <span style="margin-left:6px; padding:2px 6px; background:rgba(0,0,0,0.05); border-radius:4px;">Ocupação: <b>${skuEff}%</b></span>${skuSobras > 0 ? ` · <span style="color:#16a34a;">♻ ${skuSobras} sobra(s) gerada(s)</span>` : ''}</span>
           </div>
           ${skuPlans.map(({ plan: p }, localIdx) => _renderBarCard(p, localIdx, cfgTrim)).join('')}
         </div>
@@ -1280,8 +1291,7 @@ function _renderBarCard(p, idx, cfgTrim) {
   }
 
   const usedMm = p.pcs.reduce((s, pc) => s + pc.dim, 0);
-  const barUseful = geraSobra ? (usedMm + p.rem) : usedMm;
-  const effBar = ((barUseful / p.len) * 100).toFixed(1);
+  const effBar = ((usedMm / p.len) * 100).toFixed(1);
 
   // Badge de sobra gerada
   const sobraBadge = geraSobra
@@ -1303,7 +1313,7 @@ function _renderBarCard(p, idx, cfgTrim) {
           <span style="font-size:12px; color:var(--text-400); margin-left:8px;">${p.sku} ${skuShortDesc ? `(${skuShortDesc})` : ''} · ${fmtM(p.len)} · ${p.type === 'scrap' ? `Retalho ${p.srcId}${addrText}` : 'Virgem'}</span>
           ${sobraBadge}
         </div>
-        <span class="status-badge ${parseFloat(effBar) >= 90 ? 'badge-approved' : parseFloat(effBar) >= 70 ? 'badge-batch' : 'badge-pending'}">${effBar}% aproveitamento</span>
+        <span class="status-badge ${parseFloat(effBar) >= 90 ? 'badge-approved' : parseFloat(effBar) >= 70 ? 'badge-batch' : 'badge-pending'}">${effBar}% ocupado</span>
       </div>
       <div class="bar-track">${segs}${refileEl}${wasteEl}</div>
       <div class="bar-meta">
