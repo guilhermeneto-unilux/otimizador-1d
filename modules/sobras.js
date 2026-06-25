@@ -58,9 +58,14 @@ function _renderSobrasTabs(active = 'map') {
 }
 
 function renderSobras() {
+  if (!userCan('scraps:view')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
+    return;
+  }
   const content = document.getElementById('contentArea');
   const q       = (appState.filters.sobras || '').toLowerCase();
   const tab     = appState._sobrasTab || 'map';
+  const canWrite = userCan('scraps:write');
 
   if (tab === 'list') {
     content.innerHTML = _renderSobrasListView(q);
@@ -85,6 +90,8 @@ function renderSobras() {
       </div>
 
       ${_renderSobrasTabs('map')}
+
+      ${canWrite ? '' : renderReadOnlyHint('Você pode consultar localização e histórico dos retalhos, mas não cadastrar, editar ou excluir sobras.')}
 
       <div class="search-bar-card" style="margin-bottom:24px;">
         <div class="search-input-group">
@@ -152,10 +159,10 @@ function renderSobras() {
                    value="${_uiEscAttr(appState.filters.sobras || '')}"
                    oninput="_updateSobrasSearch(this.value)">
           </div>
-          <button class="btn btn-green" onclick="_openManualSobraModal()">
+          ${canWrite ? `<button class="btn btn-green" onclick="_openManualSobraModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             Novo Retalho Manual
-          </button>
+          </button>` : ''}
           <button class="btn btn-white" onclick="_imprimirQrCodes()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h6v7"></path><path d="M18 9V2h-6"></path><path d="M6 22v-7h6"></path><path d="M18 22v-7h-6"></path></svg>
             Imprimir QR Codes
@@ -164,6 +171,8 @@ function renderSobras() {
       </div>
 
       ${_renderSobrasTabs('map')}
+
+      ${canWrite ? '' : renderReadOnlyHint('Você pode consultar localização e histórico dos retalhos, mas não cadastrar, editar ou excluir sobras.')}
 
       <div class="wms-dashboard">
         ${cards}
@@ -216,7 +225,7 @@ function renderSobras() {
           `;
         } else {
           gridHtml += `
-            <div class="wms-cell empty" onclick="_clickWmsSlot('${ender}', false)" title="Vazio: ${ender}">
+            <div class="wms-cell empty" ${canWrite ? `onclick="_clickWmsSlot('${ender}', false)"` : ''} title="${canWrite ? `Vazio: ${ender}` : `Vazio: ${ender} · somente consulta`}">
               <div style="font-size:14px; opacity:0.6; font-weight:400; margin-bottom:2px;">+</div>
               <span style="opacity:0.3; font-size:9px;">${cellLabel}</span>
             </div>
@@ -235,6 +244,8 @@ function renderSobras() {
       </div>
 
       ${_renderSobrasTabs('map')}
+
+      ${canWrite ? '' : renderReadOnlyHint('Você pode consultar localização e histórico dos retalhos, mas não cadastrar, editar ou excluir sobras.')}
 
       <div class="table-card" style="padding:24px; overflow-x:auto;">
         ${gridHtml}
@@ -265,6 +276,7 @@ function _sobrasFilteredList(q = (appState.filters.sobras || '').toLowerCase()) 
 
 function _renderSobrasListView(q = '') {
   const filtered = _sobrasFilteredList(q);
+  const canWrite = userCan('scraps:write');
   return `
     <div class="pg-header">
       <div>
@@ -280,11 +292,13 @@ function _renderSobrasListView(q = '') {
                  value="${_uiEscAttr(appState.filters.sobras || '')}"
                  oninput="_updateSobrasSearch(this.value)">
         </div>
-        <button class="btn btn-green" onclick="_openManualSobraModal()">Novo Retalho Manual</button>
+        ${canWrite ? '<button class="btn btn-green" onclick="_openManualSobraModal()">Novo Retalho Manual</button>' : ''}
       </div>
     </div>
 
     ${_renderSobrasTabs('list')}
+
+    ${canWrite ? '' : renderReadOnlyHint('Você pode consultar os retalhos, mas não cadastrar, editar ou excluir sobras.')}
 
     <div class="table-card">
       <table class="tbl">
@@ -310,6 +324,7 @@ function _renderSobrasListView(q = '') {
 }
 
 function _sobrasListRows(list) {
+  const canWrite = userCan('scraps:write');
   if (!list.length) {
     return '<tr><td colspan="9" style="text-align:center; padding:48px; color:var(--text-400);">Nenhuma sobra encontrada.</td></tr>';
   }
@@ -333,7 +348,7 @@ function _sobrasListRows(list) {
           <td style="color:var(--text-500);">${_uiEsc(s.origem || '-')}</td>
           <td style="text-align:right;">
             <button class="btn btn-white btn-sm" onclick="_verSobraNoMapa('${_uiEscAttr(s.endereco || '')}')">Ver Local</button>
-            <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${_uiEscAttr(s.id)}')">Excluir</button>
+            ${canWrite ? `<button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${_uiEscAttr(s.id)}')">Excluir</button>` : ''}
           </td>
         </tr>
       `;
@@ -532,6 +547,7 @@ async function _registrarHistoricoSobra(action, sobra, extra = {}) {
 }
 
 function _sobrasSearchRows(filtered) {
+  const canWrite = userCan('scraps:write');
   if (!filtered.length) {
     return '<tr><td colspan="6" style="text-align:center; padding:48px; color:var(--text-400);">Nenhum retalho encontrado para esta busca.</td></tr>';
   }
@@ -552,7 +568,7 @@ function _sobrasSearchRows(filtered) {
         <td style="font-size:11px; color:var(--text-400);">${s.criacao}</td>
         <td style="text-align:right;">
           <button class="btn btn-white btn-sm" onclick="_clickWmsSlot('${s.endereco}', true)">Ver no Mapa</button>
-          <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button>
+          ${canWrite ? `<button class="btn btn-white btn-sm" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button>` : ''}
         </td>
       </tr>
     `;
@@ -582,6 +598,7 @@ function _updateSobrasSearch(value) {
 function _renderUnallocated() {
   const list = appState.sobras.filter(s => !s.endereco);
   if(list.length === 0) return '';
+  const canWrite = userCan('scraps:write');
   return `
     <div style="margin-top:32px;">
       <h3 style="margin-bottom:12px; font-size:14px;">Retalhos Sem Endereço (${list.length})</h3>
@@ -590,7 +607,7 @@ function _renderUnallocated() {
         <tbody>
           ${list.map(s => `<tr>
             <td>${s.id}</td><td>${s.sku}</td><td>${fmtM(s.medida)}</td>
-            <td><button class="btn btn-white btn-sm" onclick="_consumirSobra('${s.id}')">Excluir</button></td>
+            <td>${canWrite ? `<button class="btn btn-white btn-sm" onclick="_consumirSobra('${s.id}')">Excluir</button>` : '<span class="compras-muted">Consulta</span>'}</td>
           </tr>`).join('')}
         </tbody>
       </table></div>
@@ -647,6 +664,7 @@ function _findSobraSkuFromInput(value) {
 }
 
 function _clickWmsSlot(endereco, isOccupied) {
+  const canWrite = userCan('scraps:write');
   if (isOccupied) {
     const s = appState.sobras.find(x => x.endereco === endereco);
     if(!s) return;
@@ -661,12 +679,13 @@ function _clickWmsSlot(endereco, isOccupied) {
         </div>
       `,
       `
-        <div><button class="btn btn-white" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button></div>
-        <button class="btn btn-white" onclick="_editarSobra('${s.id}')">Editar</button>
+        ${canWrite ? `<div><button class="btn btn-white" style="color:var(--red);" onclick="_consumirSobra('${s.id}')">Excluir</button></div>
+        <button class="btn btn-white" onclick="_editarSobra('${s.id}')">Editar</button>` : '<div></div>'}
         <button class="btn btn-white" onclick="closeModal()">Fechar</button>
       `
     );
   } else {
+    if (!requirePermission('scraps:write')) return;
     // Vazio -> Cadastrar
     openModal(
       `Estocar no Slot: ${endereco}`,
@@ -707,6 +726,7 @@ function _clickWmsSlot(endereco, isOccupied) {
 }
 
 function _editarSobra(id) {
+  if (!requirePermission('scraps:write')) return;
   const s = appState.sobras.find(x => x.id === id);
   if (!s) {
     showToast('Sobra não encontrada.', 'error');
@@ -742,6 +762,7 @@ function _editarSobra(id) {
 }
 
 async function _salvarEdicaoSobra(id, btnEl) {
+  if (!requirePermission('scraps:write')) return;
   const current = appState.sobras.find(x => x.id === id);
   const skuInput = document.getElementById('soSkuInput');
   const measureInput = document.getElementById('soMed');
@@ -809,6 +830,7 @@ function _generateManualSobraId() {
 }
 
 async function _salvarSobra(btnEl) {
+  if (!requirePermission('scraps:write')) return;
   if (btnEl) {
     btnEl.dataset.originalText = btnEl.textContent;
     btnEl.disabled = true;
@@ -889,6 +911,7 @@ async function _salvarSobra(btnEl) {
 }
 
 function _consumirSobra(id) {
+  if (!requirePermission('scraps:write')) return;
   const s = appState.sobras.find(x => x.id === id);
   if (!s) {
     showToast('Sobra não encontrada.', 'error');
@@ -927,6 +950,7 @@ function _consumirSobra(id) {
 }
 
 async function _confirmarExcluirSobra(id, btnEl) {
+  if (!requirePermission('scraps:write')) return;
   const s = appState.sobras.find(x => x.id === id);
   const reason = document.getElementById('sobraDeleteReason')?.value || '';
   const obs = document.getElementById('sobraDeleteObs')?.value.trim() || '';
@@ -993,6 +1017,7 @@ async function _confirmarExcluirSobra(id, btnEl) {
 
 // ─── NOVO FLUXO: PASSO 1 (ESCANEAR) ───────────────────────────
 function _openManualSobraModal() {
+  if (!requirePermission('scraps:write')) return;
   // Modal 1: Identificação da Prateleira
   const btns = WMS_QUADS.map(q => {
     return `<button class="btn btn-dark" style="background:${q.bg}; color:${q.text}; ${q.border ? 'border:1px solid '+q.border : ''}; padding:14px; font-size:13px; font-weight:700;" onclick="_avancarCadastroSobra('${q.id}')">${q.name.toUpperCase()}</button>`;
@@ -1056,6 +1081,7 @@ function _findNextWmsSlotByQuad(quadId) {
 
 // ─── NOVO FLUXO: PASSO 2 (PREENCHER DADOS) ─────────────────────
 function _avancarCadastroSobra(quadId) {
+  if (!requirePermission('scraps:write')) return;
   const nextSlot = _findNextWmsSlotByQuad(quadId);
   const q = WMS_QUADS.find(x => x.id === quadId);
 

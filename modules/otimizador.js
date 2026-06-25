@@ -8,6 +8,10 @@ const OTIM_SOLVER_TIMEOUT_MS = 30000;
 const OTIM_SOLVER_WORKER_URL = 'modules/optimization-worker.js?v=1.1';
 
 function renderOtimizador() {
+  if (!userCan('optimizer:view')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
+    return;
+  }
   const lotesDisp = appState.lotes.filter(l => l.status === 'pending' && l.ordens && l.ordens.length > 0);
 
   document.getElementById('contentArea').innerHTML = `
@@ -100,6 +104,7 @@ function _lotePieceCount(lote) {
    ============================================================ */
 
 function _startOtimizacao() {
+  if (!requirePermission('optimizer:run')) return;
   const loteId = document.getElementById('otimLote').value;
   if (!loteId) { showToast('Selecione um lote!', 'error'); return; }
 
@@ -1334,6 +1339,7 @@ function _renderBarCard(p, idx, cfgTrim) {
    FINALIZAR OTIMIZAÇÃO
    ============================================================ */
 async function _finalizarOtimizacao() {
+  if (!requirePermission('plans:write')) return;
   const res = window._lastOtimResult;
   if (!res) return;
   const { plans, loteId, usedScraps, cfgTrim = null, strategy = OTIM_STRATEGY_CURRENT, solver = null } = res;

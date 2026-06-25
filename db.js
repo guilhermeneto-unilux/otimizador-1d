@@ -399,7 +399,7 @@ const DB = {
       auth_uid: u.auth_uid || null,
       name: u.name,
       email: String(u.email || '').trim().toLowerCase(),
-      role: u.role || 'operador'
+      role: typeof normalizeUserRole === 'function' ? normalizeUserRole(u.role || 'pcp') : (u.role || 'pcp')
     };
     const { error } = await supabaseClient.from('unilux_users').upsert(dbUser);
     if (error) {

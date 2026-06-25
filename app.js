@@ -126,8 +126,8 @@ const ROUTES = {
 };
 
 function navigate(route) {
-  if (['configuracoes', 'usuarios', 'auditoria'].includes(route) && (!appState.currentUser || appState.currentUser.role !== 'admin')) {
-    showToast('Acesso negado', 'error');
+  if (!userCanRoute(route)) {
+    showToast('Acesso negado para este perfil.', 'error');
     return;
   }
   appState.currentRoute = route;
@@ -223,7 +223,7 @@ async function initAuth() {
   }
 
   appState.currentUser = profile;
-  document.body.classList.toggle('is-admin', profile.role === 'admin');
+  applyAccessUI();
   _updateLoginUI();
 }
 
@@ -255,13 +255,14 @@ function _updateLoginUI() {
     overlay.classList.add('active');
   } else {
     overlay.classList.remove('active');
+    applyAccessUI();
     const footer = document.querySelector('.sidebar-footer');
     if (footer) {
       footer.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
           <div>
             <div class="dot"></div> ${_uiEsc(appState.currentUser.name)}
-            <div style="font-size:9px; margin-top:2px; opacity:0.6;">${_uiEsc(appState.currentUser.role.toUpperCase())}</div>
+            <div style="font-size:9px; margin-top:2px; opacity:0.6;">${_uiEsc(roleLabel(appState.currentUser.role).toUpperCase())}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Sair" style="padding:4px;">
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
@@ -290,7 +291,7 @@ async function doLogin() {
   const profile = await DB.fetchCurrentUserProfile(data.user);
   if (profile) {
     appState.currentUser = profile;
-    document.body.classList.toggle('is-admin', profile.role === 'admin');
+    applyAccessUI();
     _updateLoginUI();
     await DB.init(APP_MOCK);
     _updateLoginUI();
@@ -310,6 +311,7 @@ async function doLogout() {
   localStorage.removeItem('unilux_session');
   appState.currentUser = null;
   document.body.classList.remove('is-admin');
+  document.body.removeAttribute('data-role');
   DB.clearSensitiveState();
   document.getElementById('contentArea').innerHTML = '';
   _updateLoginUI();

@@ -1,8 +1,13 @@
 /* ===== ORDENS DE PRODUÇÃO – UNILUX 1D ===== */
 
 function renderOrdens() {
+  if (!userCan('orders:view')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
+    return;
+  }
   const tab      = appState._ordensTab || 'pending';
   const q        = (appState.filters.ordens || '').toLowerCase();
+  const canWrite = userCan('orders:write');
 
   const pending  = appState.ordens.filter(o => o.status === 'pending');
   const inBatch  = appState.ordens.filter(o => o.status === 'in_batch');
@@ -18,29 +23,31 @@ function renderOrdens() {
         <h1 class="pg-title">Ordens de Produção</h1>
       </div>
       <div class="pg-actions">
-        <button class="btn btn-white btn-sm" onclick="_openColarExcelModal()">
+        ${canWrite ? `<button class="btn btn-white btn-sm" onclick="_openColarExcelModal()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
           Modelo
-        </button>
+        </button>` : ''}
         <button class="btn btn-white btn-sm">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           CSV
         </button>
-        <input type="file" id="opExcelFile" accept=".xlsx, .xls, .csv" style="display:none;" onchange="_handleExcelUpload(event)">
+        ${canWrite ? `<input type="file" id="opExcelFile" accept=".xlsx, .xls, .csv" style="display:none;" onchange="_handleExcelUpload(event)">
         <button class="btn btn-white btn-sm" style="background:#fff7ed; border-color:#fdba74; color:#c2410c;" onclick="document.getElementById('opExcelFile').click()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
           Importar Planilha
         </button>
         <button class="btn btn-white btn-sm" onclick="_novaOrdemModal()">+ Nova Ordem</button>
         ${tab === 'pending' ? `<button class="btn btn-white btn-sm" style="color:var(--red); border-color:#fee2e2; margin-right:4px;" onclick="_excluirOrdensMassa()">Excluir Selecionadas</button>` : ''}
-        <button class="btn btn-green" onclick="_criarLote()">Criar Lote →</button>
+        <button class="btn btn-green" onclick="_criarLote()">Criar Lote →</button>` : ''}
       </div>
     </div>
+
+    ${canWrite ? '' : renderReadOnlyHint('Você pode consultar as ordens, mas não importar, criar, excluir, reverter ou criar lotes.')}
 
     <div class="tabs" style="margin-bottom:0; border-bottom:0; border-radius:8px 8px 0 0;">
       <span class="tab ${tab === 'pending' ? 'active' : ''}" onclick="_setOrdensTab('pending')">Pendentes (${pending.length} linhas / ${pendingPieces} pç)</span>
       <span class="tab ${tab === 'batch'   ? 'active' : ''}" onclick="_setOrdensTab('batch')">Em Lote (${inBatch.length} linhas / ${inBatchPieces} pç)</span>
-      ${tab === 'batch' && inBatch.length > 0 
+      ${canWrite && tab === 'batch' && inBatch.length > 0
         ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--red); border:1px solid #fee2e2; font-weight:700;" onclick="_reverterTodasOrdens()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             Reverter Tudo para Pendente
@@ -65,7 +72,7 @@ function renderOrdens() {
       <table class="tbl">
         <thead>
           <tr>
-            <th style="width:36px;"><input type="checkbox" id="checkAll" onchange="_toggleAll(this)"></th>
+            ${canWrite ? '<th style="width:36px;"><input type="checkbox" id="checkAll" onchange="_toggleAll(this)"></th>' : ''}
             <th>OP</th><th>SKU</th><th>Dimensão Corte</th><th>QTD</th><th>Entrega</th><th>Cliente</th><th>Status</th><th style="text-align:right;">Ação</th>
           </tr>
         </thead>
@@ -124,7 +131,8 @@ function _updateOrdensSearch(value) {
 }
 
 function _ordensRows(list) {
-  if (!list.length) return `<tr><td colspan="9" class="tbl-empty">Nenhuma ordem</td></tr>`;
+  const canWrite = userCan('orders:write');
+  if (!list.length) return `<tr><td colspan="${canWrite ? 9 : 8}" class="tbl-empty">Nenhuma ordem</td></tr>`;
   return list.map(o => {
     const c = skuColor(o.sku);
     const isRework = _isRetrabalhoOrdem(o);
@@ -141,7 +149,9 @@ function _ordensRows(list) {
       : o.status === 'in_batch'
         ? `Lote ${o.lote}`
         : 'Concluído';
-    const actionHtml = o.status === 'pending'
+    const actionHtml = !canWrite
+      ? '<span class="compras-muted">Consulta</span>'
+      : o.status === 'pending'
       ? `<div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
           ${isRework ? `<button class="btn btn-white btn-sm" style="padding:4px 8px;" onclick="_editarRetrabalhoModal('${o.id}')">Editar</button>` : ''}
           <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px 8px;" onclick="if(confirm('Tem certeza que deseja excluir esta Ordem de Produção?')) _deleteOrdem('${o.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
@@ -151,7 +161,7 @@ function _ordensRows(list) {
         : '';
     return `
     <tr>
-      <td><input type="checkbox" class="ord-chk" data-id="${o.id}"></td>
+      ${canWrite ? `<td><input type="checkbox" class="ord-chk" data-id="${o.id}"></td>` : ''}
       <td>${opCell}</td>
       <td><span class="sku-tag" style="background:${c.bg};color:${c.text};">${o.sku}</span></td>
       <td class="fw-700">${fmtM(o.dim)}</td>
@@ -201,6 +211,7 @@ function _setOrdensTab(tab) { appState._ordensTab = tab; renderOrdens(); }
 function _toggleAll(el) { document.querySelectorAll('.ord-chk').forEach(c => c.checked = el.checked); }
 
 function _editarRetrabalhoModal(id) {
+  if (!requirePermission('orders:write')) return;
   const o = appState.ordens.find(x => x.id === id);
   if (!o || !_isRetrabalhoOrdem(o) || o.status !== 'pending') {
     showToast('Somente OPs pendentes de retrabalho podem ser editadas.', 'error');
@@ -231,6 +242,7 @@ function _editarRetrabalhoModal(id) {
 }
 
 async function _salvarEdicaoRetrabalho(id) {
+  if (!requirePermission('orders:write')) return;
   const o = appState.ordens.find(x => x.id === id);
   if (!o || !_isRetrabalhoOrdem(o) || o.status !== 'pending') {
     showToast('Retrabalho não encontrado para edição.', 'error');
@@ -275,6 +287,7 @@ async function _salvarEdicaoRetrabalho(id) {
 }
 
 function _novaOrdemModal() {
+  if (!requirePermission('orders:write')) return;
   const skuOpts = appState.skus.map(s => `<option value="${s.code}">${s.code} – ${s.desc}</option>`).join('');
   openModal('Nova Ordem de Produção', `
     <div class="form-group">
@@ -312,6 +325,7 @@ function _novaOrdemModal() {
 }
 
 async function _salvarOrdem() {
+  if (!requirePermission('orders:write')) return;
   let rawId   = document.getElementById('opId').value.trim();
   const sku   = _canonicalSku(document.getElementById('opSku').value.trim());
   const dim   = Math.round(parseFloat(document.getElementById('opDim').value.replace(',', '.')) * 1000);
@@ -373,6 +387,7 @@ async function _salvarOrdem() {
 }
 
 async function _criarLote() {
+  if (!requirePermission('orders:write')) return;
   const sel = [...new Set([...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id))];
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
   const validation = _validateOrdensParaLote(sel);
@@ -458,6 +473,7 @@ function _showLoteValidationReport(validation) {
 }
 
 async function _deleteOrdem(id) {
+  if (!requirePermission('orders:write')) return;
   try {
     // UI Otimista: remove da memória e atualiza tela na hora
     appState.ordens = appState.ordens.filter(o => o.id !== id);
@@ -476,6 +492,7 @@ async function _deleteOrdem(id) {
 }
 
 async function _excluirOrdensMassa() {
+  if (!requirePermission('orders:write')) return;
   const sel = [...document.querySelectorAll('.ord-chk:checked')].map(c => c.dataset.id);
   if (!sel.length) { showToast('Selecione ao menos uma ordem!', 'error'); return; }
   
@@ -501,6 +518,7 @@ async function _excluirOrdensMassa() {
 }
 
 async function _reverterOrdem(id) {
+  if (!requirePermission('orders:write')) return;
   const o = appState.ordens.find(x => x.id === id);
   if (!o) return;
   
@@ -527,6 +545,7 @@ async function _reverterOrdem(id) {
 }
 
 async function _reverterTodasOrdens() {
+  if (!requirePermission('orders:write')) return;
   const inBatch = appState.ordens.filter(o => o.status === 'in_batch');
   if (inBatch.length === 0) return;
   
@@ -560,6 +579,7 @@ async function _reverterTodasOrdens() {
    EXCEL IMPORT LOGIC
    ===================================================================== */
 async function _handleExcelUpload(e) {
+  if (!requirePermission('orders:write')) return;
   const file = e.target.files[0];
   if (!file) return;
 
@@ -604,6 +624,7 @@ async function _handleExcelUpload(e) {
    PASTE FROM EXCEL LOGIC
    ===================================================================== */
 function _openColarExcelModal() {
+  if (!requirePermission('orders:write')) return;
   const allHeaders = ['mrp', 'op_codigo', 'quantidade', 'numero_pedido_cliente', 'nome_cliente', 'codigo_cliente', 'sku_codigo', 'nome_produto', 'data_entrega', 'observacao', 'largura_corte', 'altura_corte', 'numero_etiqueta', 'largura_peca', 'altura_peca', 'descricao_configuracao', 'garras', 'modelo', 'qtd_carrinhos', 'emenda'];
   const reqHeaders = ['op_codigo', 'quantidade', 'sku_codigo', 'largura_corte'];
 
@@ -635,6 +656,7 @@ function _openColarExcelModal() {
 }
 
 async function _processarColarExcel() {
+  if (!requirePermission('orders:write')) return;
   const text = document.getElementById('pasteExcelArea').value;
   if (!text || !text.trim()) { showToast('Nenhum dado colado!', 'error'); return; }
 
@@ -944,6 +966,7 @@ function _skuExists(sku) {
 }
 
 async function _commitOrdensImport(result, opts = {}) {
+  if (!requirePermission('orders:write')) return;
   showToast('Validado. Salvando OPs...', 'info');
   try {
     if (opts.clearFirst) {

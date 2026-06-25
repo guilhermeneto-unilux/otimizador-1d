@@ -1,5 +1,5 @@
 async function renderAuditoria() {
-  if (appState.currentUser?.role !== 'admin') {
+  if (!userCan('audit:view')) {
      document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
      return;
   }

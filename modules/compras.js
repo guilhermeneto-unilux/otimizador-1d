@@ -3,12 +3,18 @@
 const COMPRAS_STATUS_ORDER = { critical: 0, alert: 1, ok: 2, excess: 3 };
 
 function renderCompras() {
+  if (!userCan('compras:view')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
+    return;
+  }
   _ensureComprasState();
 
   const filters = appState.filters.compras;
   const activeTab = filters.tab || 'analise';
   const analytics = _buildComprasAnalytics();
   const rows = _comprasFilteredRows(analytics.rows, filters);
+  const canEntry = userCan('compras:entry');
+  const canConfig = userCan('compras:config');
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
@@ -17,14 +23,16 @@ function renderCompras() {
         <h1 class="pg-title">Compras</h1>
       </div>
       <div class="pg-actions">
-        <button class="btn btn-green btn-sm" onclick="_openComprasEntradaModal()">
+        ${canEntry ? `<button class="btn btn-green btn-sm" onclick="_openComprasEntradaModal()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
           Entrada
-        </button>
-        <button class="btn btn-white btn-sm" onclick="_openComprasGlobalModal()">Parametros</button>
+        </button>` : ''}
+        ${canConfig ? '<button class="btn btn-white btn-sm" onclick="_openComprasGlobalModal()">Parametros</button>' : ''}
         <button class="btn btn-white btn-sm" onclick="_exportComprasCsv()">Exportar CSV</button>
       </div>
     </div>
+
+    ${(!canEntry && !canConfig) ? renderReadOnlyHint('Você pode consultar compras, catálogo, estoque e sugestões, mas não registrar entrada nem alterar parâmetros.') : ''}
 
     ${_renderComprasTabs(activeTab)}
 
@@ -498,6 +506,7 @@ function _comprasFilteredRows(rows, filters) {
 function _renderComprasRow(row) {
   const status = _comprasStatusMeta(row.status);
   const sc = skuColor(row.sku);
+  const canConfig = userCan('compras:config');
   return `
     <tr>
       <td>
@@ -541,7 +550,7 @@ function _renderComprasRow(row) {
       <td style="text-align:right;">
         <div style="display:flex; gap:6px; justify-content:flex-end;">
           <button class="btn btn-white btn-sm" onclick="_openComprasSkuModal(${_comprasJsString(row.sku)})">Detalhes</button>
-          <button class="btn btn-white btn-sm" onclick="_openComprasSkuConfigModal(${_comprasJsString(row.sku)})">Configurar</button>
+          ${canConfig ? `<button class="btn btn-white btn-sm" onclick="_openComprasSkuConfigModal(${_comprasJsString(row.sku)})">Configurar</button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -582,6 +591,7 @@ function _renderComprasQueue(rows) {
 }
 
 function _renderComprasSetupGaps(rows) {
+  const canConfig = userCan('compras:config');
   const gaps = [];
   rows.forEach(r => {
     if (!r.supplier) gaps.push({ sku: r.sku, label: 'fornecedor nao definido' });
@@ -593,7 +603,7 @@ function _renderComprasSetupGaps(rows) {
   return `
     <div class="compras-gap-list">
       ${visible.map(g => `
-        <button class="compras-gap-item" onclick="_openComprasSkuConfigModal(${_comprasJsString(g.sku)})">
+        <button class="compras-gap-item" ${canConfig ? `onclick="_openComprasSkuConfigModal(${_comprasJsString(g.sku)})"` : 'disabled'}>
           <b>${_comprasEsc(g.sku)}</b>
           <span>${_comprasEsc(g.label)}</span>
         </button>
@@ -604,6 +614,7 @@ function _renderComprasSetupGaps(rows) {
 function _openComprasSkuModal(sku) {
   const row = _buildComprasAnalytics().rows.find(r => r.sku === sku);
   if (!row) { showToast('SKU nao encontrado na analise.', 'error'); return; }
+  const canConfig = userCan('compras:config');
   const status = _comprasStatusMeta(row.status);
   const orders = row.demand.orders.slice().sort((a, b) => String(a.entrega || '').localeCompare(String(b.entrega || '')));
   openModal(`Analise de Compra · ${sku}`, `
@@ -666,7 +677,7 @@ function _openComprasSkuModal(sku) {
         </div>` : '<div class="tbl-empty compras-empty-small">Nenhum retalho atual encaixa nas pecas da janela.</div>'}
     </div>
   `, `
-    <button class="btn btn-white" onclick="_openComprasSkuConfigModal(${_comprasJsString(sku)})">Configurar SKU</button>
+    ${canConfig ? `<button class="btn btn-white" onclick="_openComprasSkuConfigModal(${_comprasJsString(sku)})">Configurar SKU</button>` : ''}
     <button class="btn btn-dark" onclick="closeModal()">Fechar</button>
   `);
 }
@@ -692,6 +703,7 @@ function _renderComprasSimulatorTable(row) {
 }
 
 function _openComprasGlobalModal() {
+  if (!requirePermission('compras:config')) return;
   _ensureComprasState();
   const cfg = _normalizeComprasConfig(appState.comprasConfig).global;
   openModal('Parametros de Compras', `
@@ -727,6 +739,7 @@ function _openComprasGlobalModal() {
 }
 
 async function _saveComprasGlobalConfig() {
+  if (!requirePermission('compras:config')) return;
   _ensureComprasState();
   const cfg = _normalizeComprasConfig(appState.comprasConfig);
   cfg.global = {
@@ -751,6 +764,7 @@ async function _saveComprasGlobalConfig() {
 }
 
 function _openComprasSkuConfigModal(sku) {
+  if (!requirePermission('compras:config')) return;
   _ensureComprasState();
   const settings = _comprasSkuSettings(sku);
   const sObj = (appState.skus || []).find(s => s.code === sku);
@@ -805,6 +819,7 @@ function _openComprasSkuConfigModal(sku) {
 }
 
 async function _saveComprasSkuConfig(sku) {
+  if (!requirePermission('compras:config')) return;
   _ensureComprasState();
   const cfg = _normalizeComprasConfig(appState.comprasConfig);
   const current = cfg.skus[sku] && typeof cfg.skus[sku] === 'object' ? cfg.skus[sku] : {};
@@ -839,6 +854,7 @@ async function _saveComprasSkuConfig(sku) {
 }
 
 function _openComprasEntradaModal() {
+  if (!requirePermission('compras:entry')) return;
   const skuOptions = (appState.skus || [])
     .slice()
     .sort((a, b) => String(a.desc || a.code).localeCompare(String(b.desc || b.code), 'pt-BR'));
@@ -961,6 +977,7 @@ function _updateComprasEntradaCostPreview() {
 }
 
 async function _saveComprasEntrada() {
+  if (!requirePermission('compras:entry')) return;
   const code = document.getElementById('entradaSkuSelect')?.value || '';
   const sku = (appState.skus || []).find(s => s.code === code);
   if (!sku) { showToast('Selecione um SKU valido.', 'error'); return; }

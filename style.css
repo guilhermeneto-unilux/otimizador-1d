@@ -992,6 +992,35 @@ a { text-decoration: none; color: inherit; }
 }
 .admin-only { display: none !important; }
 body.is-admin .admin-only { display: flex !important; }
+
+.access-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.access-hint span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.compras-gap-item:disabled {
+  cursor: default;
+  opacity: .72;
+}
 body.is-admin a.nav-item.admin-only { display: flex !important; }
 
 /* ================================================================
