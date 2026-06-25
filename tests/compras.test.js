@@ -31,7 +31,8 @@ const context = vm.createContext({
     ordens: [],
     sobras: [],
     planos: [],
-    configs: {}
+    configs: {},
+    currentUser: { role: 'compras' }
   },
   document: {
     getElementById(id) { return fields[id] || null; }
@@ -47,6 +48,7 @@ const context = vm.createContext({
   fmtM(mm) { return `${mm}mm`; }
 });
 
+vm.runInContext(fs.readFileSync('modules/permissions.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync('modules/pricing.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync('modules/compras.js', 'utf8'), context);
 context.renderCompras = () => {};

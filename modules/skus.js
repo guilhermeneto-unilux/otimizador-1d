@@ -1,6 +1,10 @@
 /* ===== SKUs & ESTOQUE UNIFICADO ===== */
 
 function renderSkus() {
+  if (!userCan('skus:view')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
+    return;
+  }
   const content = document.getElementById('contentArea');
   content.innerHTML = _renderSkusCatalogHtml();
 }
@@ -11,6 +15,7 @@ function _renderSkusCatalogHtml(options = {}) {
   
   const filteredRows = _skusFilteredRows(q);
   const rows = _skusRows(filteredRows);
+  const canManage = userCan('skus:manage');
 
   return `
     ${embedded ? `
@@ -19,10 +24,10 @@ function _renderSkusCatalogHtml(options = {}) {
           <div class="compras-panel-title">Catalogo e Estoque Virgem</div>
           <div class="compras-panel-subtitle">${appState.skus.length} perfis cadastrados no estoque de barras virgens.</div>
         </div>
-        <button class="btn btn-green" onclick="_newSkuModal()">
+        ${canManage ? `<button class="btn btn-green" onclick="_newSkuModal()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           Novo Perfil & Estoque
-        </button>
+        </button>` : ''}
       </div>
     ` : `
     <div class="pg-header">
@@ -30,12 +35,14 @@ function _renderSkusCatalogHtml(options = {}) {
         <div class="pg-eyebrow">${appState.skus.length} perfis cadastrados</div>
         <h1 class="pg-title">Catálogo e Estoque Virgem</h1>
       </div>
-      <button class="btn btn-green" onclick="_newSkuModal()">
+      ${canManage ? `<button class="btn btn-green" onclick="_newSkuModal()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         Novo Perfil & Estoque
-      </button>
+      </button>` : ''}
     </div>
     `}
+
+    ${canManage ? '' : renderReadOnlyHint('Catálogo disponível em consulta. Inclusão, edição manual de estoque e exclusão ficam restritas ao administrador.')}
 
     <!-- BARRA DE BUSCA -->
     <div class="search-bar-card" style="${embedded ? '' : 'margin-top:24px;'}">
@@ -82,6 +89,7 @@ function _skusFilteredRows(q = (appState.filters.skus || '').toLowerCase()) {
 }
 
 function _skusRows(list) {
+  const canManage = userCan('skus:manage');
   return list.map(s => {
     const sc = skuColor(s.code);
 
@@ -121,11 +129,11 @@ function _skusRows(list) {
           <div style="font-weight:600; color:var(--text-400);">${fmtM(s.min_sobra)}</div>
         </td>
         <td style="text-align:right;">
-          <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+          ${canManage ? `<div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
             <button class="btn btn-white btn-sm" onclick="_editSkuModal('${s.id}')">Editar Estoque</button>
             <div style="width:1px; height:16px; background:var(--border);"></div>
             <button class="btn btn-white btn-sm" style="color:var(--red);" onclick="if(confirm('Excluir permanentemente o perfil ${s.code}?')) _deleteSku('${s.id}')">Remover</button>
-          </div>
+          </div>` : '<span class="compras-muted">Consulta</span>'}
         </td>
       </tr>
     `;
@@ -250,6 +258,7 @@ function _extractDimsFromForm() {
 }
 
 function _newSkuModal() {
+  if (!requirePermission('skus:manage')) return;
   openModal(
     'Cadastrar Perfil & Estoque',
     _getSkuFormHtml(),
@@ -259,6 +268,7 @@ function _newSkuModal() {
 }
 
 async function _salvarSku() {
+  if (!requirePermission('skus:manage')) return;
   let code = document.getElementById('skCode').value.toUpperCase().trim();
   const desc = document.getElementById('skDesc').value.trim();
   const short_desc = document.getElementById('skShortDesc').value.trim();
@@ -299,6 +309,7 @@ async function _salvarSku() {
 }
 
 function _editSkuModal(id) {
+  if (!requirePermission('skus:manage')) return;
   const s = appState.skus.find(x => x.id === id);
   if (!s) return;
   openModal(
@@ -314,6 +325,7 @@ function _editSkuModal(id) {
 }
 
 async function _saveEditSku(id) {
+  if (!requirePermission('skus:manage')) return;
   const s = appState.skus.find(x => x.id === id);
   if (!s) { showToast('SKU não encontrado!', 'error'); return; }
 
@@ -358,6 +370,7 @@ async function _saveEditSku(id) {
 }
 
 async function _deleteSku(id) {
+  if (!requirePermission('skus:manage')) return;
   const sku = appState.skus.find(x => x.id === id);
   appState.skus = appState.skus.filter(x => x.id !== id);
   await DB.deleteSku(id);

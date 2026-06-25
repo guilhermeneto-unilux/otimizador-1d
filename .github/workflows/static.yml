@@ -30,6 +30,7 @@ jobs:
 
           test -s index.html
           test -s modules/optimization-worker.js
+          test -s modules/permissions.js
           test -s modules/pricing.js
           test -s vendor/supabase-js-2.108.2.min.js
           test -s vendor/xlsx-0.20.3.full.min.js
@@ -37,6 +38,7 @@ jobs:
           grep -q 'vendor/supabase-js-2.108.2.min.js' index.html
           grep -q 'vendor/xlsx-0.20.3.full.min.js' index.html
           grep -q 'modules/optimization-worker.js' modules/otimizador.js
+          grep -q 'modules/permissions.js' index.html
           grep -q 'modules/pricing.js' index.html
 
           if grep -Eq 'cdn\.jsdelivr|cdn\.sheetjs' index.html; then
@@ -49,6 +51,7 @@ jobs:
           done
 
           node tests/pricing.test.js
+          node tests/permissions.test.js
           node tests/compras.test.js
           node tests/optimization-worker.test.js
       - name: Setup Pages

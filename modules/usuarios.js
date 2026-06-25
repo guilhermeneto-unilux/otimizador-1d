@@ -3,7 +3,7 @@ function _normalizeUserEmail(value) {
 }
 
 function renderUsuarios() {
-  if (appState.currentUser?.role !== 'admin') {
+  if (!userCan('users:manage')) {
     document.getElementById('contentArea').innerHTML = `<h3>Acesso negado. Apenas administradores.</h3>`;
     return;
   }
@@ -34,9 +34,10 @@ function renderUsuarios() {
               <td><div class="fw-700">${_userEsc(u.name)}</div></td>
               <td>${_userEsc(u.email)}</td>
               <td>
-                <span class="status-badge ${u.role === 'admin' ? 'badge-batch' : 'badge-done'}">
-                  ${_userEsc(String(u.role || '').toUpperCase())}
+                <span class="status-badge ${normalizeUserRole(u.role) === 'admin' ? 'badge-batch' : normalizeUserRole(u.role) === 'compras' ? 'badge-pending' : 'badge-done'}">
+                  ${_userEsc(roleLabel(u.role).toUpperCase())}
                 </span>
+                <div style="font-size:11px; color:var(--text-400); margin-top:4px;">${_userEsc(roleDescription(u.role))}</div>
               </td>
               <td style="text-align:right;">
                 <button class="btn btn-white btn-sm" onclick="_editUserModal('${u.id}')">Editar</button>
@@ -61,6 +62,7 @@ function _novoUsuarioModal() {
 }
 
 async function _refreshUsuarios() {
+  if (!requirePermission('users:manage')) return;
   await DB.init(APP_MOCK);
   renderUsuarios();
 }
@@ -70,8 +72,10 @@ async function _saveNewUser() {
 }
 
 function _editUserModal(id) {
+  if (!requirePermission('users:manage')) return;
   const u = appState.users.find(x => x.id === id);
   if (!u) return;
+  const currentRole = normalizeUserRole(u.role);
 
   openModal(`Editar Usuário: ${u.name}`, `
     <div class="form-group">
@@ -85,8 +89,9 @@ function _editUserModal(id) {
     <div class="form-group">
       <label class="form-label">Nível de Acesso</label>
       <select id="uRoleEdit" class="form-control">
-        <option value="operador" ${u.role === 'operador' ? 'selected' : ''}>Operador (Acesso restrito)</option>
-        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrador (Acesso total)</option>
+        ${roleOptions().map(role => `
+          <option value="${_userEscAttr(role.value)}" ${currentRole === role.value ? 'selected' : ''}>${_userEsc(role.label)} — ${_userEsc(role.description)}</option>
+        `).join('')}
       </select>
     </div>
   `, `
@@ -97,11 +102,12 @@ function _editUserModal(id) {
 
 async function _saveEditedUser(id) {
   try {
+    if (!requirePermission('users:manage')) return;
     const u = appState.users.find(x => x.id === id);
     if (!u) return;
 
     const name = document.getElementById('uNameEdit').value.trim();
-    const role = document.getElementById('uRoleEdit').value;
+    const role = normalizeUserRole(document.getElementById('uRoleEdit').value);
 
     if (!name) { showToast("Preencha o Nome!", "error"); return; }
 
@@ -120,6 +126,7 @@ async function _saveEditedUser(id) {
 }
 
 async function _deleteUser(id) {
+  if (!requirePermission('users:manage')) return;
   if (appState.currentUser?.id === id) {
     showToast("Não remova o próprio acesso ativo.", "error");
     return;

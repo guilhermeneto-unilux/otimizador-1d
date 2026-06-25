@@ -719,10 +719,12 @@ function _renderConfidenceBadge(confidence) {
 
 function _renderApplyScrapSizingButton(r) {
   if (r.action === 'manter') return '<span style="color:var(--text-400); font-size:12px;">-</span>';
+  if (!userCan('scraps:write')) return '<span class="compras-muted">Consulta</span>';
   return `<button class="btn btn-white btn-sm" onclick="_applyScrapSizingRecommendation(${_dashJsString(r.sku)}, ${r.ideal})">Aplicar</button>`;
 }
 
 async function _applyScrapSizingRecommendation(sku, ideal) {
+  if (!requirePermission('scraps:write')) return;
   const s = appState.skus.find(x => x.code === sku);
   if (!s) { showToast('SKU não encontrado para aplicar sugestão.', 'error'); return; }
   if (!confirm(`Atualizar sobra mínima do SKU ${sku} para ${fmtM(ideal)}?`)) return;

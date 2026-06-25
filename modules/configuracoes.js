@@ -1,4 +1,8 @@
 function renderConfiguracoes() {
+  if (!userCan('config:manage')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado. Apenas administradores.</h3>`;
+    return;
+  }
   const c = appState.configs || { trim_m: 0, scrap_penalty_pct: 0 };
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
@@ -29,6 +33,7 @@ function renderConfiguracoes() {
 }
 
 function _salvarConfig() {
+  if (!requirePermission('config:manage')) return;
   const trimInput = document.getElementById('cfgTrim').value;
   const trim = Math.round(parseFloat(trimInput.replace(',', '.')) * 1000) || 0;
   const scrap = parseInt(document.getElementById('cfgScrap').value) || 0;

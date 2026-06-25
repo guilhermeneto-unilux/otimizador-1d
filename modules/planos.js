@@ -1,10 +1,15 @@
 /* ===== PLANOS DE CORTE – UNILUX 1D ===== */
 
 function renderPlanos() {
+  if (!userCan('plans:view')) {
+    document.getElementById('contentArea').innerHTML = `<h3>Acesso negado.</h3>`;
+    return;
+  }
   const lotesPend = appState.lotes.filter(l => l.status === 'pending');
   const planos = appState.planos || [];
   const q = (appState.filters.planos || '').trim();
   const filteredCount = q ? planos.filter(p => _planoMatchesSearch(p, q)).length : planos.length;
+  const canWrite = userCan('plans:write');
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header" style="margin-bottom:24px;">
@@ -13,6 +18,8 @@ function renderPlanos() {
         <h1 class="pg-title">Planos de Corte</h1>
       </div>
     </div>
+
+    ${canWrite ? '' : renderReadOnlyHint('Você pode consultar planos e mapas de corte, mas não reverter planos, excluir lotes, otimizar ou criar retrabalho.')}
 
     <!-- ABAS OU SEÇÕES -->
     <div style="display:flex; flex-direction:column; gap:32px;">
@@ -75,6 +82,7 @@ function renderPlanos() {
 }
 
 function _planosFinalizadosRows(planos, q = '') {
+  const canWrite = userCan('plans:write');
   return planos.slice().sort((a,b) => new Date(b.data) - new Date(a.data)).map(p => {
     const barras = p.mapa ? p.mapa.length : 0;
     const approval = _planoApprovalInfo(p);
@@ -100,10 +108,10 @@ function _planosFinalizadosRows(planos, q = '') {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar Excel
           </button>
-          <button class="btn btn-white btn-sm" style="background:#fff1f2; border-color:#fecdd3; color:#e11d48;" onclick="_reverterPlanoParaLote('${p.id}')" title="Desfazer Aprovação e voltar para Lote">
+          ${canWrite ? `<button class="btn btn-white btn-sm" style="background:#fff1f2; border-color:#fecdd3; color:#e11d48;" onclick="_reverterPlanoParaLote('${p.id}')" title="Desfazer Aprovação e voltar para Lote">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             Reverter para Lote
-          </button>
+          </button>` : ''}
           <button class="btn btn-white btn-sm" onclick="_verPlanoMapa('${p.id}')">Ver Mapa</button>
         </div>
       </td>
@@ -185,6 +193,7 @@ function _planosPieceMatchesSearch(pc, q) {
 }
 
 function _lotesPendentesRows(lotes) {
+  const canWrite = userCan('plans:write');
   return lotes.map(l => {
     return `
     <tr>
@@ -202,18 +211,19 @@ function _lotesPendentesRows(lotes) {
       </td>
       <td style="color:var(--text-400);">${l.criacao || '—'}</td>
       <td style="text-align:right;">
-        <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
+        ${canWrite ? `<div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
           <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px 8px;" onclick="_excluirLotePendente('${l.id}')" title="Excluir Lote">
              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
           </button>
           <button class="btn btn-dark btn-sm" onclick="_abrirLoteNoOtimizador('${l.id}')">Otimizar Agora →</button>
-        </div>
+        </div>` : '<span class="compras-muted">Consulta</span>'}
       </td>
     </tr>`;
   }).join('');
 }
 
 async function _excluirLotePendente(id) {
+  if (!requirePermission('plans:write')) return;
   if (!confirm(`Deseja realmente excluir o lote ${id}?\nAs ordens de produção ficarão livres para serem agrupadas em outro lote.`)) return;
 
   const lote = appState.lotes.find(l => l.id === id);
@@ -238,6 +248,7 @@ async function _excluirLotePendente(id) {
 }
 
 function _abrirLoteNoOtimizador(loteId) {
+  if (!requirePermission('optimizer:run')) return;
   navigate('otimizador');
   setTimeout(() => {
     const sel = document.getElementById('otimLote');
@@ -504,6 +515,7 @@ function _filtrarPlanos(val) {
 function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '', planContext = null) {
   const totalPcs = bin.pcs.reduce((sum, p) => sum + p.dim, 0);
   const aprov = ((totalPcs/bin.len)*100).toFixed(1);
+  const canCreateRework = userCan('orders:write');
 
   const sObj = appState.skus.find(s => s.code === bin.sku);
   const skuShortDesc = sObj && sObj.short_desc ? sObj.short_desc : (sObj && sObj.desc ? sObj.desc : '');
@@ -529,11 +541,16 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '',
           const w = (pc.dim / bin.len) * 100;
           const label = _pieceLabel(pc);
           const pieceClass = _planosPieceMatchesSearch(pc, activeSearch) ? 'plano-map-piece plano-map-piece--highlight' : 'plano-map-piece';
-          return `
+          return canCreateRework ? `
             <button class="${pieceClass}" style="width:${w}%;" title="${label}: ${fmtM(pc.dim)}" onclick="_confirmarRetrabalhoOP('${planoId}', ${binIdx}, ${pcIdx})">
               <span class="plano-map-piece-label">${label}</span>
               <span class="plano-map-piece-dim">${fmtM(pc.dim)}</span>
             </button>
+          ` : `
+            <div class="${pieceClass}" style="width:${w}%;" title="${label}: ${fmtM(pc.dim)}">
+              <span class="plano-map-piece-label">${label}</span>
+              <span class="plano-map-piece-dim">${fmtM(pc.dim)}</span>
+            </div>
           `;
         }).join('')}
         ${bin.rem > 0 ? `<div class="plano-map-waste" title="${restanteLabel}: ${fmtM(bin.rem)}">${restanteLabel}: ${fmtM(bin.rem)}</div>` : ''}
@@ -557,6 +574,7 @@ function _getPlanoPieceContext(planoId, binIdx, pcIdx) {
 }
 
 function _confirmarRetrabalhoOP(planoId, binIdx, pcIdx) {
+  if (!requirePermission('orders:write')) return;
   const ctx = _getPlanoPieceContext(planoId, binIdx, pcIdx);
   if (!ctx) {
     showToast('Não foi possível localizar esta OP no plano.', 'error');
@@ -581,6 +599,7 @@ function _confirmarRetrabalhoOP(planoId, binIdx, pcIdx) {
 }
 
 async function _criarOrdemRetrabalho(plano, bin, pc, binIdx, pcIdx) {
+  if (!requirePermission('orders:write')) return;
   const original = appState.ordens.find(o => o.id === pc.op);
   const originalBaseOp = pc.baseOp || pc.op || pc.pieceId || 'OP';
   const id = _nextRetrabalhoId(originalBaseOp);
@@ -672,6 +691,7 @@ function _planoSkuMinSobra(sku) {
 }
 
 async function _reverterPlanoParaLote(planoId) {
+  if (!requirePermission('plans:write')) return;
   const html = `
     <div style="padding:10px; text-align:center;">
       <div style="font-size:24px; margin-bottom:16px;">🔄</div>
