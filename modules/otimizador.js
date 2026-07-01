@@ -1322,7 +1322,9 @@ function _renderBarCard(p, idx, cfgTrim) {
       </div>
       <div class="bar-track">${segs}${refileEl}${wasteEl}</div>
       <div class="bar-meta">
-        <span>${p.pcs.length} peça(s): ${p.pcs.map(pc => `${_pieceLabel(pc)}(${fmtM(pc.dim)})`).join(', ')}</span>
+        <span>Material: <b>${_otimEsc(p.sku)}</b></span>
+        ${skuShortDesc ? `<span>Nome resumido: <b>${_otimEsc(skuShortDesc)}</b></span>` : ''}
+        <span>Peças: <b>${p.pcs.length}</b></span>
         <span style="font-weight:600; color:${geraSobra ? '#16a34a' : p.rem > 0 ? '#ef4444' : 'var(--text-400)'};">
           ${geraSobra 
             ? `♻ Sobra: ${fmtM(p.rem)} → Vai para Estoque` 
@@ -1331,6 +1333,9 @@ function _renderBarCard(p, idx, cfgTrim) {
               : '✓ Zero desperdício'}
         </span>
         <span style="font-weight:700; color:var(--text-700);">${discardValueText}</span>
+      </div>
+      <div class="bar-meta" style="justify-content:flex-start; margin-top:6px;">
+        <span>${p.pcs.length} peça(s): ${p.pcs.map(pc => `${_otimEsc(_pieceLabel(pc))}(${fmtM(pc.dim)})`).join(', ')}</span>
       </div>
     </div>`;
 }

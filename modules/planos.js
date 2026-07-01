@@ -557,7 +557,7 @@ function _renderBarResult(bin, idx, planoId = '', binIdx = 0, activeSearch = '',
       </div>
       <div class="plano-map-bar-meta">
         <span>Material: <b>${bin.sku}</b></span>
-        ${bin.type === 'scrap' && skuShortDesc ? `<span>Nome resumido: <b>${_planosEsc(skuShortDesc)}</b></span>` : ''}
+        ${skuShortDesc ? `<span>Nome resumido: <b>${_planosEsc(skuShortDesc)}</b></span>` : ''}
         <span>Peças: <b>${bin.pcs.length}</b></span>
         <span>Valor descartado: <b>${barFinancials.unpricedSkuCount ? 'Preço pendente' : fmtBRL(barFinancials.discardValue)}</b></span>
       </div>
