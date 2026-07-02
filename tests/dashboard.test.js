@@ -7,7 +7,10 @@ const context = vm.createContext({
   Date,
   Intl,
   appState: {
-    skus: [{ code: 'SKU-A', short_desc: 'Perfil teste', min_sobra: 200000 }],
+    skus: [
+      { code: 'SKU-A', short_desc: 'Perfil teste', min_sobra: 200000 },
+      { code: 'SKU-B', short_desc: 'Base Shadow Branco', min_sobra: 1000 }
+    ],
     planos: [],
     sobras: [],
     configs: {},
@@ -46,5 +49,9 @@ const usefulScrapMetric = vm.runInContext(`_metricFromBins([
 assert.equal(usefulScrapMetric.realEfficiency, (4000 / 6000) * 100);
 assert.equal(usefulScrapMetric.efficiency, 100);
 assert.equal(usefulScrapMetric.generatedPct, (2000 / 6000) * 100);
+
+assert.equal(vm.runInContext("_dashboardSkuFromInput('SKU-B - Base Shadow Branco')", context), 'SKU-B');
+assert.equal(vm.runInContext("_dashboardSkuFromInput('base*shadow')", context), 'SKU-B');
+assert.equal(vm.runInContext("_dashboardSkuSearchMatches('perfil').length", context), 1);
 
 console.log('dashboard.test.js: ok');

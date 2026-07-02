@@ -15,6 +15,7 @@ function renderDashboard() {
   const planFinancials = _aggregatePlanFinancials(analytics.plans, filters.sku);
   const skuOptions = _dashboardSkuOptions();
   const selectedSkuLabel = filters.sku ? filters.sku : 'Todos os SKUs';
+  const selectedSkuInputValue = _dashboardSkuInputValue(filters.sku, skuOptions);
 
   document.getElementById('contentArea').innerHTML = `
     <div class="pg-header">
@@ -26,10 +27,21 @@ function renderDashboard() {
         <input type="date" class="form-control" style="width:145px; padding:7px 10px; font-size:12px;" value="${filters.start}" onchange="_setDashboardFilter('start', this.value)">
         <span style="font-size:12px; color:var(--text-400);">até</span>
         <input type="date" class="form-control" style="width:145px; padding:7px 10px; font-size:12px;" value="${filters.end}" onchange="_setDashboardFilter('end', this.value)">
-        <select class="form-control" style="width:220px; padding:7px 10px; font-size:12px;" onchange="_setDashboardFilter('sku', this.value)">
-          <option value="">Todos os SKUs</option>
-          ${skuOptions.map(s => `<option value="${_dashEsc(s.code)}" ${filters.sku === s.code ? 'selected' : ''}>${_dashEsc(s.code)}${s.short ? ` - ${_dashEsc(s.short)}` : ''}</option>`).join('')}
-        </select>
+        <div class="search-input-group dashboard-top-sku-filter">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text"
+                 class="form-control"
+                 id="dashboardSkuFilterInput"
+                 list="dashboardSkuFilterList"
+                 placeholder="Pesquisar SKU ou perfil..."
+                 value="${_dashEsc(selectedSkuInputValue)}"
+                 onchange="_applyDashboardSkuFilterInput(this.value)"
+                 onkeydown="if(event.key === 'Enter') { event.preventDefault(); _applyDashboardSkuFilterInput(this.value); }">
+          <datalist id="dashboardSkuFilterList">
+            ${skuOptions.map(s => `<option value="${_dashEsc(_dashboardSkuOptionLabel(s))}"></option>`).join('')}
+          </datalist>
+        </div>
+        ${filters.sku ? _renderClearDashboardSkuButton() : ''}
         <button class="btn btn-white btn-sm" onclick="_resetDashboardFilters()">Últimos 30 dias</button>
       </div>
     </div>
@@ -86,8 +98,6 @@ function renderDashboard() {
         <div class="kpi-finance-note">${fmtM(planFinancials.discardMm)} entre refugo e refile</div>
       </div>
     </div>
-
-    ${_renderSkuPerformanceSection(analytics, filters)}
 
     <div class="card" style="padding:24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px; flex-wrap:wrap;">
@@ -166,6 +176,8 @@ function renderDashboard() {
         ${_renderDemandTable(analytics.topDemand)}
       </div>
     </div>
+
+    ${_renderSkuPerformanceSection(analytics, filters)}
   `;
 }
 
@@ -193,6 +205,90 @@ function _setDashboardFilter(key, value) {
 function _resetDashboardFilters() {
   appState.filters.dashboard = _defaultDashboardFilters();
   renderDashboard();
+}
+
+function _applyDashboardSkuFilterInput(value) {
+  _ensureDashboardFilters();
+  const raw = String(value || '').trim();
+
+  if (!raw) {
+    if (appState.filters.dashboard.sku) {
+      _setDashboardFilter('sku', '');
+    } else {
+      const input = document.getElementById('dashboardSkuFilterInput');
+      if (input) input.value = '';
+    }
+    return;
+  }
+
+  const sku = _dashboardSkuFromInput(raw);
+  if (sku) {
+    _setDashboardFilter('sku', sku);
+    return;
+  }
+
+  const matches = _dashboardSkuSearchMatches(raw);
+  if (matches.length) {
+    showToast(`Encontrei ${matches.length} SKU(s). Selecione uma opção da lista para aplicar o filtro.`, 'info');
+  } else {
+    showToast('Nenhum SKU encontrado para esse texto.', 'info');
+  }
+
+  const input = document.getElementById('dashboardSkuFilterInput');
+  if (input) input.value = _dashboardSkuInputValue(appState.filters.dashboard.sku);
+}
+
+function _dashboardSkuFromInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const options = _dashboardSkuOptions();
+  const rawKey = _dashSearchKey(raw);
+  const exact = options.find(opt => {
+    const codeKey = _dashSearchKey(opt.code);
+    const labelKey = _dashSearchKey(_dashboardSkuOptionLabel(opt));
+    return rawKey === codeKey || rawKey === labelKey;
+  });
+  if (exact) return exact.code;
+
+  const prefix = options
+    .slice()
+    .sort((a, b) => String(b.code).length - String(a.code).length)
+    .find(opt => rawKey.startsWith(`${_dashSearchKey(opt.code)} - `));
+  if (prefix) return prefix.code;
+
+  const matches = _dashboardSkuSearchMatches(raw);
+  return matches.length === 1 ? matches[0].code : '';
+}
+
+function _dashboardSkuSearchMatches(value) {
+  const terms = _dashSearchTerms(value);
+  if (!terms.length) return [];
+  return _dashboardSkuOptions().filter(opt => {
+    const haystack = _dashSearchKey([opt.code, opt.short, _dashboardSkuOptionLabel(opt)].filter(Boolean).join(' '));
+    let cursor = 0;
+    return terms.every(term => {
+      const idx = haystack.indexOf(term, cursor);
+      if (idx === -1) return false;
+      cursor = idx + term.length;
+      return true;
+    });
+  });
+}
+
+function _dashboardSkuInputValue(sku, options = _dashboardSkuOptions()) {
+  if (!sku) return '';
+  const opt = options.find(o => o.code === sku);
+  return opt ? _dashboardSkuOptionLabel(opt) : sku;
+}
+
+function _dashboardSkuOptionLabel(opt) {
+  if (!opt) return '';
+  return opt.short ? `${opt.code} - ${opt.short}` : opt.code;
+}
+
+function _renderClearDashboardSkuButton() {
+  return `<button class="btn btn-white btn-sm" onclick="_setDashboardFilter('sku', '')">Limpar SKU</button>`;
 }
 
 function _normalizeDashboardDateRange() {
@@ -1115,6 +1211,21 @@ function _dashEsc(value) {
     '"': '&quot;',
     "'": '&#39;'
   }[ch]));
+}
+
+function _dashSearchKey(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function _dashSearchTerms(value) {
+  return _dashSearchKey(value)
+    .split('*')
+    .map(term => term.trim())
+    .filter(Boolean);
 }
 
 function _dashJsString(value) {
