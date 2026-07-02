@@ -23,24 +23,29 @@ function renderDashboard() {
         <div class="pg-eyebrow">${today}</div>
         <h1 class="pg-title">Dashboard</h1>
       </div>
-      <div class="pg-actions" style="flex-wrap:wrap; justify-content:flex-end;">
-        <input type="date" class="form-control" style="width:145px; padding:7px 10px; font-size:12px;" value="${filters.start}" onchange="_setDashboardFilter('start', this.value)">
+    </div>
+
+    <div class="search-bar-card dashboard-filter-bar">
+      <div class="dashboard-date-filter">
+        <input type="date" class="form-control" value="${filters.start}" onchange="_setDashboardFilter('start', this.value)">
         <span style="font-size:12px; color:var(--text-400);">até</span>
-        <input type="date" class="form-control" style="width:145px; padding:7px 10px; font-size:12px;" value="${filters.end}" onchange="_setDashboardFilter('end', this.value)">
-        <div class="search-input-group dashboard-top-sku-filter">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text"
-                 class="form-control"
-                 id="dashboardSkuFilterInput"
-                 list="dashboardSkuFilterList"
-                 placeholder="Pesquisar SKU ou perfil..."
-                 value="${_dashEsc(selectedSkuInputValue)}"
-                 onchange="_applyDashboardSkuFilterInput(this.value)"
-                 onkeydown="if(event.key === 'Enter') { event.preventDefault(); _applyDashboardSkuFilterInput(this.value); }">
-          <datalist id="dashboardSkuFilterList">
-            ${skuOptions.map(s => `<option value="${_dashEsc(_dashboardSkuOptionLabel(s))}"></option>`).join('')}
-          </datalist>
-        </div>
+        <input type="date" class="form-control" value="${filters.end}" onchange="_setDashboardFilter('end', this.value)">
+      </div>
+      <div class="search-input-group dashboard-top-sku-filter">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text"
+               class="form-control"
+               id="dashboardSkuFilterInput"
+               list="dashboardSkuFilterList"
+               placeholder="Pesquisar SKU ou perfil..."
+               value="${_dashEsc(selectedSkuInputValue)}"
+               onchange="_applyDashboardSkuFilterInput(this.value)"
+               onkeydown="if(event.key === 'Enter') { event.preventDefault(); _applyDashboardSkuFilterInput(this.value); }">
+        <datalist id="dashboardSkuFilterList">
+          ${skuOptions.map(s => `<option value="${_dashEsc(_dashboardSkuOptionLabel(s))}"></option>`).join('')}
+        </datalist>
+      </div>
+      <div class="dashboard-filter-actions">
         ${filters.sku ? _renderClearDashboardSkuButton() : ''}
         <button class="btn btn-white btn-sm" onclick="_resetDashboardFilters()">Últimos 30 dias</button>
       </div>
@@ -284,7 +289,7 @@ function _dashboardSkuInputValue(sku, options = _dashboardSkuOptions()) {
 
 function _dashboardSkuOptionLabel(opt) {
   if (!opt) return '';
-  return opt.short ? `${opt.code} - ${opt.short}` : opt.code;
+  return opt.short ? `${opt.short} — ${opt.code}` : opt.code;
 }
 
 function _renderClearDashboardSkuButton() {
