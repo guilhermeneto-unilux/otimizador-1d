@@ -87,6 +87,8 @@ function renderDashboard() {
       </div>
     </div>
 
+    ${_renderSkuPerformanceSection(analytics, filters)}
+
     <div class="card" style="padding:24px; margin-bottom:20px;">
       <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px; flex-wrap:wrap;">
         <div>
@@ -171,13 +173,14 @@ function _ensureDashboardFilters() {
   if (!appState.filters) appState.filters = {};
   if (!appState.filters.dashboard) appState.filters.dashboard = _defaultDashboardFilters();
   if (appState.filters.dashboard.scrapSku === undefined) appState.filters.dashboard.scrapSku = '';
+  if (appState.filters.dashboard.skuPerformanceQ === undefined) appState.filters.dashboard.skuPerformanceQ = '';
 }
 
 function _defaultDashboardFilters() {
   const end = _dateInputValue(new Date());
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 30);
-  return { start: _dateInputValue(startDate), end, sku: '', scrapSku: '' };
+  return { start: _dateInputValue(startDate), end, sku: '', scrapSku: '', skuPerformanceQ: '' };
 }
 
 function _setDashboardFilter(key, value) {
@@ -206,9 +209,14 @@ function _buildDashboardAnalytics(filters) {
   const bins = _dashboardBinsFromPlans(plans, filters.sku);
   const scrapBins = _dashboardBinsFromPlans(plans, filters.scrapSku || '');
   const overall = _metricFromBins(bins);
-  const skuMetrics = _skuMetricsFromPlans(plans, filters.sku);
+  const allSkuMetrics = _skuMetricsFromPlans(plans, '');
+  const skuMetrics = filters.sku ? allSkuMetrics.filter(m => m.sku === filters.sku) : allSkuMetrics;
   const months = _monthlyMetrics(plans, filters);
   const scrapStorage = _dashboardScrapStorageStats();
+  const skuPerformanceRows = allSkuMetrics
+    .filter(m => m.bars > 0)
+    .map(m => _enrichSkuPerformanceMetric(m, plans, filters))
+    .sort((a, b) => a.realEfficiency - b.realEfficiency || b.discardLen - a.discardLen || b.bars - a.bars);
   const worstSkus = skuMetrics
     .filter(m => m.bars > 0)
     .sort((a, b) => a.efficiency - b.efficiency || b.bars - a.bars)
@@ -232,6 +240,10 @@ function _buildDashboardAnalytics(filters) {
     planCount: new Set(bins.map(b => b.planId)).size,
     overall,
     months,
+    selectedSkuPerformance: filters.sku
+      ? (skuPerformanceRows.find(row => row.sku === filters.sku) || _emptySkuPerformance(filters.sku, plans, filters))
+      : null,
+    skuPerformanceRows,
     scrapStorage,
     worstSkus,
     bestSkus,
@@ -250,6 +262,78 @@ function _scrapMetricFromBins(bins, sku) {
     usedCount: metric.scrapBars,
     usedLen: metric.scrapLen
   };
+}
+
+function _enrichSkuPerformanceMetric(metric, plans, filters) {
+  const financials = _aggregatePlanFinancials(plans, metric.sku);
+  const inventory = _currentInventoryFinancials(metric.sku);
+  return {
+    ...metric,
+    financials,
+    inventory,
+    trend: _skuPerformanceTrend(metric.sku, filters, metric.realEfficiency)
+  };
+}
+
+function _emptySkuPerformance(sku, plans, filters) {
+  const sObj = appState.skus.find(s => s.code === sku);
+  const empty = {
+    sku,
+    desc: sObj ? (sObj.short_desc || sObj.desc || '') : '',
+    minSobra: _skuMinSobra(sku),
+    trim: 0,
+    currentDims: [],
+    pieceDims: [],
+    generatedRems: [],
+    planCount: 0,
+    bars: 0,
+    virginBars: 0,
+    scrapBars: 0,
+    pieces: 0,
+    barLen: 0,
+    usedLen: 0,
+    usefulLen: 0,
+    generatedCount: 0,
+    generatedLen: 0,
+    scrapLen: 0,
+    discardLen: 0,
+    efficiency: 0,
+    realEfficiency: 0,
+    discardPct: 0,
+    generatedPct: 0,
+    financials: _aggregatePlanFinancials(plans, sku),
+    inventory: _currentInventoryFinancials(sku),
+    trend: _skuPerformanceTrend(sku, filters, 0)
+  };
+  return empty;
+}
+
+function _skuPerformanceTrend(sku, filters, currentRealEfficiency = null) {
+  const start = _parseDateStart(filters.start);
+  const end = _parseDateEnd(filters.end);
+  if (!start || !end || start > end) return { status: 'sem-base', label: 'sem base', diff: null };
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.max(1, Math.round((end - start) / dayMs) + 1);
+  const prevEnd = new Date(start);
+  prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - days + 1);
+  const previousFilters = {
+    ...filters,
+    start: _dateInputValue(prevStart),
+    end: _dateInputValue(prevEnd)
+  };
+  const previousMetric = _metricFromBins(_dashboardBinsFromPlans(_dashboardPlansInRange(previousFilters), sku));
+  if (!previousMetric.bars) return { status: 'sem-base', label: 'sem base', diff: null };
+
+  const current = Number.isFinite(currentRealEfficiency)
+    ? currentRealEfficiency
+    : _metricFromBins(_dashboardBinsFromPlans(_dashboardPlansInRange(filters), sku)).realEfficiency;
+  const diff = current - previousMetric.realEfficiency;
+  if (diff > 1) return { status: 'melhorou', label: 'melhorou', diff };
+  if (diff < -1) return { status: 'piorou', label: 'piorou', diff };
+  return { status: 'estavel', label: 'estável', diff };
 }
 
 function _dashboardPlansInRange(filters) {
@@ -301,6 +385,7 @@ function _skuMetricsFromPlans(plans, selectedSku) {
       currentDims: [...new Set(virginDims)].sort((a,b) => a-b),
       pieceDims: pieces,
       generatedRems,
+      planCount: new Set(bins.map(b => b.planId).filter(Boolean)).size,
       ...metric
     };
   });
@@ -310,7 +395,8 @@ function _metricFromBins(bins) {
   const metric = {
     bars: 0, virginBars: 0, scrapBars: 0, pieces: 0,
     barLen: 0, usedLen: 0, usefulLen: 0, generatedCount: 0,
-    generatedLen: 0, scrapLen: 0, discardLen: 0, efficiency: 0
+    generatedLen: 0, scrapLen: 0, discardLen: 0, efficiency: 0,
+    realEfficiency: 0, discardPct: 0, generatedPct: 0
   };
 
   bins.forEach(bin => {
@@ -340,6 +426,9 @@ function _metricFromBins(bins) {
   });
 
   metric.efficiency = metric.barLen > 0 ? (metric.usefulLen / metric.barLen) * 100 : 0;
+  metric.realEfficiency = metric.barLen > 0 ? (metric.usedLen / metric.barLen) * 100 : 0;
+  metric.discardPct = metric.barLen > 0 ? (metric.discardLen / metric.barLen) * 100 : 0;
+  metric.generatedPct = metric.barLen > 0 ? (metric.generatedLen / metric.barLen) * 100 : 0;
   return metric;
 }
 
@@ -413,6 +502,186 @@ function _simulateSingleBarSize(pieces, dim, trim, minSobra) {
     barLen,
     efficiency: barLen > 0 ? (usefulLen / barLen) * 100 : 0
   };
+}
+
+function _renderSkuPerformanceSection(analytics, filters) {
+  const selected = analytics.selectedSkuPerformance;
+  const q = filters.skuPerformanceQ || '';
+  const rows = _dashboardFilteredSkuPerformanceRows(analytics.skuPerformanceRows || [], q);
+
+  return `
+    <div class="card dashboard-sku-performance">
+      <div class="dashboard-sku-head">
+        <div>
+          <div class="dashboard-section-title">Desempenho por SKU</div>
+          <div class="dashboard-section-subtitle">
+            Acompanha ocupação real, aproveitamento com sobra útil, desperdício e valor descartado por perfil no período selecionado.
+          </div>
+        </div>
+        <div class="dashboard-sku-head-actions">
+          <input type="text"
+                 class="form-control"
+                 id="skuPerformanceSearchInput"
+                 placeholder="Buscar SKU ou nome resumido..."
+                 value="${_dashEsc(q)}"
+                 oninput="_updateDashboardSkuPerformanceSearch(this.value)">
+          <span class="search-results-stats" id="skuPerformanceStats">${rows.length} SKU(s)</span>
+        </div>
+      </div>
+
+      ${selected ? _renderSelectedSkuPerformance(selected, filters) : `
+        <div class="dashboard-sku-empty-detail">
+          Selecione um SKU no filtro superior para abrir a ficha detalhada. A tabela abaixo mostra todos os SKUs com planos aprovados no período.
+        </div>
+      `}
+
+      ${_renderSkuPerformanceTable(rows, filters.sku)}
+    </div>
+  `;
+}
+
+function _renderSelectedSkuPerformance(metric, filters) {
+  const hasData = metric.bars > 0;
+  const title = metric.desc ? `${metric.sku} · ${metric.desc}` : metric.sku;
+  const financialNote = metric.financials.unpricedSkuCount
+    ? `${metric.financials.unpricedSkuCount} SKU com preço pendente no cálculo financeiro.`
+    : 'Valores financeiros com preço por metro cadastrado.';
+  return `
+    <div class="dashboard-sku-selected">
+      <div class="dashboard-sku-selected-title">
+        <div>
+          <div class="dashboard-sku-eyebrow">Ficha do SKU selecionado</div>
+          <div class="dashboard-sku-name">${_dashEsc(title)}</div>
+          <div class="dashboard-section-subtitle">${_dashEsc(_formatDashDate(filters.start))} até ${_dashEsc(_formatDashDate(filters.end))} · ${metric.planCount} plano(s) · ${metric.bars} barra(s)</div>
+        </div>
+        ${_renderTrendBadge(metric.trend)}
+      </div>
+
+      ${hasData ? `
+        <div class="dashboard-sku-kpi-grid">
+          ${_renderSkuPerfKpi('Ocupação real', _fmtPct(metric.realEfficiency), 'Só peças cortadas ÷ material aberto', _effColor(metric.realEfficiency))}
+          ${_renderSkuPerfKpi('Aproveitamento c/ sobra útil', _fmtPct(metric.efficiency), 'Peças + sobras guardáveis ÷ material aberto', _effColor(metric.efficiency))}
+          ${_renderSkuPerfKpi('Desperdício', _fmtPct(metric.discardPct), `${fmtM(metric.discardLen)} descartados`, metric.discardPct > 10 ? '#ef4444' : '#16a34a')}
+          ${_renderSkuPerfKpi('Valor descartado', fmtBRLCompact(metric.financials.discardValue), financialNote, metric.financials.discardValue > 0 ? '#ef4444' : '#16a34a')}
+          ${_renderSkuPerfKpi('Material aberto', fmtM(metric.barLen), `${fmtM(metric.usedLen)} viraram peças`, '#374151')}
+          ${_renderSkuPerfKpi('Sobras geradas/usadas', `${metric.generatedCount}/${metric.scrapBars}`, `${fmtM(metric.generatedLen)} gerados · ${fmtM(metric.scrapLen)} reutilizados`, '#f59e0b')}
+        </div>
+        <div class="dashboard-sku-meta-row">
+          <span>Peças cortadas: <b>${metric.pieces}</b></span>
+          <span>Barras virgens: <b>${metric.virginBars}</b></span>
+          <span>Retalhos usados: <b>${metric.scrapBars}</b></span>
+          <span>Valor em peças: <b>${fmtBRLCompact(metric.financials.piecesValue)}</b></span>
+          <span>Estoque atual do SKU: <b>${fmtM(metric.inventory.virginMm + metric.inventory.scrapMm)}</b></span>
+        </div>
+      ` : `
+        <div class="dashboard-sku-empty-detail">
+          Este SKU não teve plano aprovado no período selecionado. Ajuste as datas ou selecione outro SKU para ver a ficha.
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function _renderSkuPerfKpi(label, value, note, color) {
+  return `
+    <div class="dashboard-sku-kpi">
+      <div class="dashboard-sku-kpi-label">${_dashEsc(label)}</div>
+      <div class="dashboard-sku-kpi-value" style="color:${color};">${_dashEsc(value)}</div>
+      <div class="dashboard-sku-kpi-note">${_dashEsc(note)}</div>
+    </div>
+  `;
+}
+
+function _renderSkuPerformanceTable(rows, selectedSku = '') {
+  return `
+    <div class="tbl-wrap dashboard-sku-table-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Ocupação real</th>
+            <th>Aproveit. c/ sobra</th>
+            <th>Desperdício</th>
+            <th>Valor descartado</th>
+            <th>Barras</th>
+            <th>Planos</th>
+            <th>Tendência</th>
+            <th style="text-align:right;">Ação</th>
+          </tr>
+        </thead>
+        <tbody id="skuPerformanceRowsBody">
+          ${rows.length ? rows.map(r => _renderSkuPerformanceRow(r, selectedSku)).join('') : '<tr><td colspan="9" class="tbl-empty">Sem dados de SKU no período ou na busca atual.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _renderSkuPerformanceRow(r, selectedSku = '') {
+  const selected = selectedSku && selectedSku === r.sku;
+  return `
+    <tr ${selected ? 'style="background:#f8fafc;"' : ''}>
+      <td>${_renderSkuCell(r)}</td>
+      <td><span class="status-badge" style="background:${_effBg(r.realEfficiency)}; color:${_effColor(r.realEfficiency)}; border:1px solid ${_effColor(r.realEfficiency)}33;">${_fmtPct(r.realEfficiency)}</span></td>
+      <td><span class="status-badge" style="background:${_effBg(r.efficiency)}; color:${_effColor(r.efficiency)}; border:1px solid ${_effColor(r.efficiency)}33;">${_fmtPct(r.efficiency)}</span></td>
+      <td>
+        <b style="color:${r.discardPct > 10 ? '#ef4444' : 'var(--text-700)'};">${_fmtPct(r.discardPct)}</b>
+        <div style="font-size:11px; color:var(--text-400); margin-top:2px;">${fmtM(r.discardLen)}</div>
+      </td>
+      <td>
+        <b>${fmtBRLCompact(r.financials.discardValue)}</b>
+        ${r.financials.unpricedSkuCount ? '<div style="font-size:11px; color:#f59e0b; margin-top:2px;">preço pendente</div>' : ''}
+      </td>
+      <td>${r.bars} <span style="color:var(--text-400); font-size:11px;">(${fmtM(r.barLen)})</span></td>
+      <td>${r.planCount}</td>
+      <td>${_renderTrendBadge(r.trend)}</td>
+      <td style="text-align:right;">
+        ${selected
+          ? '<span class="compras-muted">Selecionado</span>'
+          : `<button class="btn btn-white btn-sm" onclick="_setDashboardFilter('sku', ${_dashJsString(r.sku)})">Ver ficha</button>`}
+      </td>
+    </tr>
+  `;
+}
+
+function _dashboardFilteredSkuPerformanceRows(rows, q = '') {
+  const needle = String(q || '').trim().toLowerCase();
+  if (!needle) return rows;
+  const compact = needle.replace(/[\s.-]/g, '');
+  return rows.filter(r => {
+    const text = [r.sku, r.desc].filter(Boolean).join(' ').toLowerCase();
+    const textCompact = text.replace(/[\s.-]/g, '');
+    return text.includes(needle) || (compact && textCompact.includes(compact));
+  });
+}
+
+function _updateDashboardSkuPerformanceSearch(value) {
+  _ensureDashboardFilters();
+  appState.filters.dashboard.skuPerformanceQ = value || '';
+  const analytics = _buildDashboardAnalytics(appState.filters.dashboard);
+  const rows = _dashboardFilteredSkuPerformanceRows(analytics.skuPerformanceRows || [], appState.filters.dashboard.skuPerformanceQ);
+  const body = document.getElementById('skuPerformanceRowsBody');
+  if (body) {
+    body.innerHTML = rows.length
+      ? rows.map(r => _renderSkuPerformanceRow(r, appState.filters.dashboard.sku)).join('')
+      : '<tr><td colspan="9" class="tbl-empty">Sem dados de SKU no período ou na busca atual.</td></tr>';
+  }
+  const stats = document.getElementById('skuPerformanceStats');
+  if (stats) stats.textContent = `${rows.length} SKU(s)`;
+}
+
+function _renderTrendBadge(trend) {
+  if (!trend || !Number.isFinite(trend.diff)) {
+    return '<span class="status-badge" style="background:#f3f4f6; color:var(--text-500); border:1px solid var(--border);">sem base</span>';
+  }
+  const diffText = `${trend.diff > 0 ? '+' : ''}${trend.diff.toFixed(1).replace('.', ',')} p.p.`;
+  if (trend.status === 'melhorou') {
+    return `<span class="status-badge" title="Comparado ao período anterior do mesmo tamanho" style="background:#dcfce7; color:#16a34a; border:1px solid #bbf7d0;">↑ ${diffText}</span>`;
+  }
+  if (trend.status === 'piorou') {
+    return `<span class="status-badge" title="Comparado ao período anterior do mesmo tamanho" style="background:#fee2e2; color:#ef4444; border:1px solid #fecaca;">↓ ${diffText}</span>`;
+  }
+  return `<span class="status-badge" title="Comparado ao período anterior do mesmo tamanho" style="background:#f3f4f6; color:var(--text-500); border:1px solid var(--border);">≈ ${diffText}</span>`;
 }
 
 function _scrapSizingRecommendations(metrics, storage) {
