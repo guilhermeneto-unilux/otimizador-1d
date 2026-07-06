@@ -637,6 +637,7 @@ function _renderSobraSkuOptions() {
 function _renderSobraSkuPicker(value = '', large = false) {
   const inputStyle = large ? 'font-size:16px; padding:12px;' : '';
   const maxHeight = large ? 250 : 220;
+  const selectedSku = _findSobraSkuFromInput(value, { ignoreHidden: true });
   return `
     <div style="position:relative; text-align:left;">
       <input type="text" class="form-control" id="soSkuInput"
@@ -646,6 +647,7 @@ function _renderSobraSkuPicker(value = '', large = false) {
              oninput="_filterSkuDropdown(this.value)"
              onfocus="_showSkuDropdown(this)"
              onkeydown="_handleSkuKeydown(event, this)">
+      <input type="hidden" id="soSkuCode" value="${_uiEscAttr(selectedSku ? selectedSku.code : '')}">
       <div id="soSkuDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; max-height:${maxHeight}px; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:6px; z-index:9000; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); text-align:left;">
         <div id="skuNoResults" style="padding:12px; color:var(--text-400); display:none; font-size:13px;">Nenhum item encontrado...</div>
         ${_renderSobraSkuOptions()}
@@ -655,12 +657,62 @@ function _renderSobraSkuPicker(value = '', large = false) {
   `;
 }
 
-function _findSobraSkuFromInput(value) {
+function _findSobraSkuFromInput(value, options = {}) {
   const raw = String(value || '').trim();
-  const separatorIndex = raw.indexOf(' - ');
-  const candidate = separatorIndex >= 0 ? raw.slice(0, separatorIndex).trim() : raw;
-  const normalizedCandidate = _normalizeStr(candidate);
-  return (appState.skus || []).find(sk => _normalizeStr(sk.code) === normalizedCandidate) || null;
+  const skus = appState.skus || [];
+  if (!raw) return null;
+
+  const hiddenCode = !options.ignoreHidden && typeof document !== 'undefined'
+    ? String(document.getElementById('soSkuCode')?.value || '').trim()
+    : '';
+  const hiddenSku = hiddenCode ? skus.find(sk => _normalizeStr(sk.code) === _normalizeStr(hiddenCode)) : null;
+  if (hiddenSku) return hiddenSku;
+
+  const normalizedRaw = _normalizeStr(raw);
+  const exact = skus.find(sk => {
+    const code = String(sk.code || '');
+    const desc = String(sk.desc || '');
+    const short = String(sk.short_desc || '');
+    const labels = [
+      code,
+      `${code} - ${desc}`,
+      `${code} — ${desc}`,
+      `${code} - ${short}`,
+      `${short} — ${code}`
+    ].filter(Boolean);
+    return labels.some(label => _normalizeStr(label) === normalizedRaw);
+  });
+  if (exact) return exact;
+
+  const byLongestCodePrefix = skus
+    .slice()
+    .sort((a, b) => String(b.code || '').length - String(a.code || '').length)
+    .find(sk => {
+      const codeKey = _normalizeStr(sk.code);
+      return codeKey && (
+        normalizedRaw.startsWith(`${codeKey} - `) ||
+        normalizedRaw.startsWith(`${codeKey} — `) ||
+        normalizedRaw.startsWith(`${codeKey} `)
+      );
+    });
+  if (byLongestCodePrefix) return byLongestCodePrefix;
+
+  const terms = normalizedRaw.split('*').map(part => part.trim()).filter(Boolean);
+  if (terms.length) {
+    const matches = skus.filter(sk => {
+      const text = _normalizeStr([sk.code, sk.desc, sk.short_desc].filter(Boolean).join(' '));
+      let cursor = 0;
+      return terms.every(term => {
+        const idx = text.indexOf(term, cursor);
+        if (idx < 0) return false;
+        cursor = idx + term.length;
+        return true;
+      });
+    });
+    if (matches.length === 1) return matches[0];
+  }
+
+  return null;
 }
 
 function _clickWmsSlot(endereco, isOccupied) {
@@ -1181,6 +1233,8 @@ function _imprimirQrCodes() {
 
 /* ====== CUSTOM SKU DROPDOWN LOGIC ====== */
 function _filterSkuDropdown(val) {
+  const hidden = document.getElementById('soSkuCode');
+  if (hidden) hidden.value = '';
   const q = _normalizeStr(val).trim();
   const opts = document.querySelectorAll('#soSkuDropdown .sku-option');
   let found = false;
@@ -1247,10 +1301,12 @@ function _handleSkuKeydown(e, inp) {
 
 function _selectSku(code, desc) {
   const inp = document.getElementById('soSkuInput');
+  const hidden = document.getElementById('soSkuCode');
   if (inp) {
     inp.value = `${code} - ${desc}`;
     inp.blur();
   }
+  if (hidden) hidden.value = code || '';
   const dd = document.getElementById('soSkuDropdown');
   if (dd) dd.style.display = 'none';
 }
