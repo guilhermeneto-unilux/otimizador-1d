@@ -36,6 +36,26 @@ const ACCESS_ROLES = {
       'manual:view'
     ]
   },
+  compras_pcp: {
+    label: 'Compras + PCP',
+    description: 'Acesso completo às áreas de Compras e PCP: ordens, otimização, planos, sobras, entradas e parâmetros.',
+    permissions: [
+      'dashboard:view',
+      'orders:view',
+      'orders:write',
+      'optimizer:view',
+      'optimizer:run',
+      'plans:view',
+      'plans:write',
+      'scraps:view',
+      'scraps:write',
+      'compras:view',
+      'compras:entry',
+      'compras:config',
+      'skus:view',
+      'manual:view'
+    ]
+  },
   consulta: {
     label: 'Consulta',
     description: 'Acesso de leitura às principais telas operacionais.',

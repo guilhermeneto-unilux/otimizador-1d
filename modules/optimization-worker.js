@@ -374,18 +374,22 @@ function addParetoCandidate(frontier, candidate) {
 }
 
 function candidateDominates(left, right) {
+  // Um candidato domina outro se é pelo menos igual em todas as métricas e
+  // estritamente melhor em pelo menos uma.
+  // Métricas: sourceLen e waste menores = melhor; virginBars, scrapBars e totalBins menores = melhor
+  // (menos sobras e barras virgens abertas significa que aproveitamos mais cada uma)
   const noWorse = left.sourceLen <= right.sourceLen + SOLVER_EPSILON
     && left.waste <= right.waste + SOLVER_EPSILON
     && left.virginBars <= right.virginBars
-    && left.totalBins <= right.totalBins
-    && left.scrapBars >= right.scrapBars;
+    && left.scrapBars <= right.scrapBars
+    && left.totalBins <= right.totalBins;
   if (!noWorse) return false;
 
   return left.sourceLen < right.sourceLen - SOLVER_EPSILON
     || left.waste < right.waste - SOLVER_EPSILON
     || left.virginBars < right.virginBars
+    || left.scrapBars < right.scrapBars
     || left.totalBins < right.totalBins
-    || left.scrapBars > right.scrapBars
     || sameCandidateMetrics(left, right);
 }
 
@@ -393,24 +397,24 @@ function sameCandidateMetrics(left, right) {
   return Math.abs(left.sourceLen - right.sourceLen) <= SOLVER_EPSILON
     && Math.abs(left.waste - right.waste) <= SOLVER_EPSILON
     && left.virginBars === right.virginBars
-    && left.totalBins === right.totalBins
-    && left.scrapBars === right.scrapBars;
+    && left.scrapBars === right.scrapBars
+    && left.totalBins === right.totalBins;
 }
 
 function compareGlobalCandidates(left, right) {
-  // Nunca use uma razão global como objetivo primário. Quando sobras reutilizáveis
-  // entram no numerador, abrir barras extras pode diluir o refugo de outro SKU e
-  // aumentar artificialmente a "eficiência" do lote. O objetivo abaixo é aditivo:
-  // primeiro compacta o material aberto, depois reduz operações e perda definitiva.
+  // Objetivo: minimizar material total aberto (sourceLen), depois minimizar bins,
+  // depois minimizar perda definitiva, barras virgens e sobras utilizadas.
+  // Menos sobras abertas = melhor aproveitamento de cada sobra.
   if (left.sourceLen !== right.sourceLen) return left.sourceLen - right.sourceLen;
   if (left.totalBins !== right.totalBins) return left.totalBins - right.totalBins;
   if (left.waste !== right.waste) return left.waste - right.waste;
   if (left.virginBars !== right.virginBars) return left.virginBars - right.virginBars;
-  return right.scrapBars - left.scrapBars;
+  return left.scrapBars - right.scrapBars; // menos sobras abertas = melhor
 }
 
 function compareForcedCandidates(left, right) {
-  if (left.scrapBars !== right.scrapBars) return right.scrapBars - left.scrapBars;
+  // Modo "forçado": prioriza usar sobras, mas ainda prefere usar menos sobras (mais peças por sobra)
+  if (left.scrapBars !== right.scrapBars) return left.scrapBars - right.scrapBars;
   return compareGlobalCandidates(left, right);
 }
 

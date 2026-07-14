@@ -4,8 +4,21 @@
 
 const SUPABASE_URL = 'https://yqnntrsdbqwtlfgmcmqq.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxbm50cnNkYnF3dGxmZ21jbXFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3Mzc5NTQsImV4cCI6MjA5MTMxMzk1NH0.Mh2t0MWxo490KPHQG9VS1wg8-Yp_rDLsydXfmpwLB14';
+// Chave de serviço: usada apenas em operações admin (criação de usuários). Nunca exposta a usuários não-admin.
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxbm50cnNkYnF3dGxmZ21jbXFxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTczNzk1NCwiZXhwIjoyMDkxMzEzOTU0fQ.yCElmBsBA3cOC7rSxyM97j6faLJYoH5BZfFULx_IEfY';
 
 const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+// Cliente admin: instanciado sob demanda para operações que exigem service_role
+let _supabaseAdminClient = null;
+function getAdminClient() {
+  if (!window.supabase) return null;
+  if (!_supabaseAdminClient) {
+    _supabaseAdminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+  }
+  return _supabaseAdminClient;
+}
 const UNILUX_PROFILE_COLUMNS = 'id, auth_uid, name, email, role, created_at';
 
 const DEFAULT_COMPRAS_CONFIG = {
@@ -406,6 +419,47 @@ const DB = {
       console.error('Erro Users:', error);
       throw error;
     }
+  },
+
+  async createUser(name, email, password, role) {
+    const adminClient = getAdminClient();
+    if (!adminClient) throw new Error('Cliente admin indisponível.');
+
+    // 1. Criar usuário no Supabase Auth via admin API
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email: String(email).trim().toLowerCase(),
+      password,
+      email_confirm: true
+    });
+    if (authError) {
+      console.error('[DB] Erro ao criar usuário no Auth:', authError);
+      throw authError;
+    }
+
+    const authUid = authData.user?.id;
+    if (!authUid) throw new Error('Usuário criado no Auth mas sem ID retornado.');
+
+    // 2. Inserir perfil na tabela unilux_users
+    const normalizedRole = typeof normalizeUserRole === 'function' ? normalizeUserRole(role) : role;
+    const profileObj = {
+      auth_uid: authUid,
+      name: String(name).trim(),
+      email: String(email).trim().toLowerCase(),
+      role: normalizedRole
+    };
+    const { data: profileData, error: profileError } = await supabaseClient
+      .from('unilux_users')
+      .insert(profileObj)
+      .select(UNILUX_PROFILE_COLUMNS)
+      .single();
+    if (profileError) {
+      console.error('[DB] Usuário criado no Auth mas erro ao salvar perfil:', profileError);
+      // Tenta reverter: remove o usuário do Auth para não ficar órfão
+      await adminClient.auth.admin.deleteUser(authUid).catch(() => {});
+      throw profileError;
+    }
+
+    return profileData;
   },
 
   async savePlanosAll() {

@@ -15,7 +15,10 @@ function renderUsuarios() {
         <div class="pg-eyebrow">Sistema</div>
         <h1 class="pg-title">Gestão de Usuários</h1>
       </div>
-      <button class="btn btn-white" onclick="_refreshUsuarios()">Atualizar</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-white" onclick="_refreshUsuarios()">Atualizar</button>
+        <button class="btn btn-dark" onclick="_novoUsuarioModal()">+ Novo Usuário</button>
+      </div>
     </div>
 
     <div class="tbl-wrap">
@@ -34,7 +37,7 @@ function renderUsuarios() {
               <td><div class="fw-700">${_userEsc(u.name)}</div></td>
               <td>${_userEsc(u.email)}</td>
               <td>
-                <span class="status-badge ${normalizeUserRole(u.role) === 'admin' ? 'badge-batch' : normalizeUserRole(u.role) === 'compras' ? 'badge-pending' : 'badge-done'}">
+                <span class="status-badge ${_userRoleBadgeClass(normalizeUserRole(u.role))}">
                   ${_userEsc(roleLabel(u.role).toUpperCase())}
                 </span>
                 <div style="font-size:11px; color:var(--text-400); margin-top:4px;">${_userEsc(roleDescription(u.role))}</div>
@@ -51,14 +54,98 @@ function renderUsuarios() {
   `;
 }
 
+function _userRoleBadgeClass(role) {
+  switch (role) {
+    case 'admin':      return 'badge-batch';
+    case 'compras':    return 'badge-pending';
+    case 'compras_pcp':return 'badge-info';
+    case 'pcp':        return 'badge-done';
+    default:           return 'badge-neutral';
+  }
+}
+
 function _novoUsuarioModal() {
-  openModal("Novo Usuário", `
-    <p style="font-size:13px; color:var(--text-500); line-height:1.5;">
-      A criação de usuários foi bloqueada nesta tela para evitar senhas em texto puro. Crie o usuário no Supabase Auth e vincule um perfil em <code>unilux_users</code>.
-    </p>
+  if (!requirePermission('users:manage')) return;
+
+  const roleOptHtml = roleOptions().map(role =>
+    `<option value="${_userEscAttr(role.value)}">${_userEsc(role.label)} — ${_userEsc(role.description)}</option>`
+  ).join('');
+
+  openModal('Novo Usuário', `
+    <div class="form-group">
+      <label class="form-label">Nome Completo</label>
+      <input type="text" id="uNameNew" class="form-control" placeholder="Ex: João da Silva" maxlength="120" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" id="uEmailNew" class="form-control" placeholder="email@empresa.com" maxlength="120" autocomplete="off" inputmode="email" autocapitalize="none" spellcheck="false">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Senha</label>
+      <input type="password" id="uPassNew" class="form-control" placeholder="Mínimo 6 caracteres" maxlength="128" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirmar Senha</label>
+      <input type="password" id="uPassNewConfirm" class="form-control" placeholder="Repita a senha" maxlength="128" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nível de Acesso</label>
+      <select id="uRoleNew" class="form-control">
+        ${roleOptHtml}
+      </select>
+    </div>
+    <div id="uNewUserError" style="display:none; color:var(--red); font-size:13px; margin-top:8px;"></div>
   `, `
-    <button class="btn btn-dark" onclick="closeModal()">Fechar</button>
+    <button class="btn btn-white" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-dark" id="uNewUserSaveBtn" onclick="_saveNewUser()">Criar Usuário</button>
   `);
+}
+
+async function _saveNewUser() {
+  if (!requirePermission('users:manage')) return;
+
+  const name   = (document.getElementById('uNameNew')?.value || '').trim();
+  const email  = _normalizeUserEmail(document.getElementById('uEmailNew')?.value || '');
+  const pass   = document.getElementById('uPassNew')?.value || '';
+  const pass2  = document.getElementById('uPassNewConfirm')?.value || '';
+  const role   = document.getElementById('uRoleNew')?.value || 'pcp';
+  const errEl  = document.getElementById('uNewUserError');
+  const saveBtn = document.getElementById('uNewUserSaveBtn');
+
+  function showErr(msg) {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+  }
+
+  if (!name)  { showErr('Preencha o Nome Completo.'); return; }
+  if (!email) { showErr('Preencha o Email.'); return; }
+  if (!pass)  { showErr('Preencha a Senha.'); return; }
+  if (pass.length < 6) { showErr('A senha deve ter no mínimo 6 caracteres.'); return; }
+  if (pass !== pass2) { showErr('As senhas não coincidem.'); return; }
+
+  // Verifica se e-mail já existe localmente
+  const emailJaExiste = (appState.users || []).some(u => _normalizeUserEmail(u.email) === email);
+  if (emailJaExiste) { showErr('Já existe um usuário com este e-mail.'); return; }
+
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Criando...'; }
+  if (errEl) errEl.style.display = 'none';
+
+  try {
+    const newProfile = await DB.createUser(name, email, pass, role);
+    if (newProfile) appState.users = [...(appState.users || []), newProfile];
+    await DB.log('Criou usuário', 'unilux_users', `${name} (${role})`);
+    showToast(`Usuário "${name}" criado com sucesso!`, 'success');
+    closeModal();
+    renderUsuarios();
+  } catch (err) {
+    console.error('[UI] Erro ao criar usuário:', err);
+    const msg = err?.message || '';
+    if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('email_exists')) {
+      showErr('Este e-mail já está registrado no sistema de autenticação.');
+    } else {
+      showErr(`Erro ao criar usuário: ${msg || 'Tente novamente.'}`);
+    }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Criar Usuário'; }
+  }
 }
 
 async function _refreshUsuarios() {
@@ -67,9 +154,6 @@ async function _refreshUsuarios() {
   renderUsuarios();
 }
 
-async function _saveNewUser() {
-  showToast("Criação pelo navegador desativada.", "error");
-}
 
 function _editUserModal(id) {
   if (!requirePermission('users:manage')) return;
