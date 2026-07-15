@@ -205,7 +205,8 @@ async function _saveEditedUser(id) {
     closeModal();
     renderUsuarios();
   } catch (err) {
-    showToast("Erro ao atualizar. Tente novamente.", "error");
+    console.error(err);
+    showToast("Erro ao atualizar: " + (err.message || err.details || "Tente novamente"), "error");
   }
 }
 

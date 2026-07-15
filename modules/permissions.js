@@ -21,6 +21,7 @@ const ACCESS_ROLES = {
       'scraps:write',
       'compras:view',
       'skus:view',
+      'skus:manage',
       'manual:view'
     ]
   },
@@ -33,6 +34,7 @@ const ACCESS_ROLES = {
       'compras:entry',
       'compras:config',
       'skus:view',
+      'skus:manage',
       'manual:view'
     ]
   },
@@ -53,6 +55,7 @@ const ACCESS_ROLES = {
       'compras:entry',
       'compras:config',
       'skus:view',
+      'skus:manage',
       'manual:view'
     ]
   },
