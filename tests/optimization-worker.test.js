@@ -67,7 +67,9 @@ const strategyRegression = solve([{
 }]);
 
 assert.equal(strategyRegression.global.scrapBars, 1, 'o plano global deve compactar as duas peças em um único retalho');
-assert.equal(strategyRegression.forced.scrapBars, 2, 'a estratégia forçada deve preservar a maximização de retalhos usados');
+// Com a correção do bug, a estratégia forçada também deve ser inteligente e compactar as peças
+// ao invés de abrir uma sobra separada para cada peça
+assert.equal(strategyRegression.forced.scrapBars, 1, 'a estratégia forçada também deve compactar as peças no mesmo retalho');
 
 const optimizerSource = fs.readFileSync('modules/otimizador.js', 'utf8');
 const optimizerContext = vm.createContext({

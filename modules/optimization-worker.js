@@ -397,8 +397,8 @@ function sameCandidateMetrics(left, right) {
   return Math.abs(left.sourceLen - right.sourceLen) <= SOLVER_EPSILON
     && Math.abs(left.waste - right.waste) <= SOLVER_EPSILON
     && left.virginBars === right.virginBars
-    && left.scrapBars === right.scrapBars
-    && left.totalBins === right.totalBins;
+    && left.totalBins === right.totalBins
+    && left.scrapBars === right.scrapBars;
 }
 
 function compareGlobalCandidates(left, right) {
@@ -413,7 +413,9 @@ function compareGlobalCandidates(left, right) {
 }
 
 function compareForcedCandidates(left, right) {
-  // Modo "forçado": prioriza usar sobras, mas ainda prefere usar menos sobras (mais peças por sobra)
+  // Modo "forçado": prioriza usar MENOS barras virgens (forçando o uso de sobras)
+  // e em seguida, prioriza usar MENOS sobras (para colocar várias peças na mesma sobra)
+  if (left.virginBars !== right.virginBars) return left.virginBars - right.virginBars;
   if (left.scrapBars !== right.scrapBars) return left.scrapBars - right.scrapBars;
   return compareGlobalCandidates(left, right);
 }
